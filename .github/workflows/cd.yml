@@ -15,7 +15,7 @@ on:
 env:
   PYTHON_VERSION: "3.11"
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/aml-pipeline
+  IMAGE_PREFIX: meuracha/aml-pipeline
 
 jobs:
   # ─────────────────────────────────────────
