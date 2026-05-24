@@ -6,34 +6,43 @@ import logging
 logger = logging.getLogger(__name__)
 
 default_args = {
-    'owner': 'aml_pipeline',
-    'retries': 3,
-    'retry_delay': timedelta(minutes=5),
-    'email_on_failure': False,
-    'sla': timedelta(hours=2),
+    "owner": "aml_pipeline",
+    "retries": 3,
+    "retry_delay": timedelta(minutes=5),
+    "email_on_failure": False,
+    "sla": timedelta(hours=2),
 }
 
 
-def emit_lineage(input_dataset, output_dataset, run_id, job_name,
-                 input_namespace='postgres', output_namespace='postgres',
-                 event_type='COMPLETE'):
+def emit_lineage(
+    input_dataset,
+    output_dataset,
+    run_id,
+    job_name,
+    input_namespace="postgres",
+    output_namespace="postgres",
+    event_type="COMPLETE",
+):
     import requests, uuid, sys
-    sys.path.insert(0, '/opt/airflow/dags')
+
+    sys.path.insert(0, "/opt/airflow/dags")
     from config import MARQUEZ_URL
 
     unique_run_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, run_id + job_name))
     event = {
         "eventType": event_type,
-        "eventTime": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+        "eventTime": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
         "run": {"runId": unique_run_id},
         "job": {"namespace": "aml_pipeline", "name": job_name},
         "inputs": [{"namespace": input_namespace, "name": input_dataset}],
         "outputs": [{"namespace": output_namespace, "name": output_dataset}],
-        "producer": "aml_pipeline/airflow"
+        "producer": "aml_pipeline/airflow",
     }
     for attempt in range(3):
         try:
-            resp = requests.post(f"{MARQUEZ_URL}/api/v1/lineage", json=event, timeout=10)
+            resp = requests.post(
+                f"{MARQUEZ_URL}/api/v1/lineage", json=event, timeout=10
+            )
             if resp.status_code == 201:
                 logger.info(f"Lineage [{event_type}]: {job_name}")
             else:
@@ -46,44 +55,71 @@ def emit_lineage(input_dataset, output_dataset, run_id, job_name,
                 logger.warning(f"Lineage emit error (non-critical): {e}")
 
 
-def log_audit(pg_conn, dag_id, run_id, task_id, layer, status,
-              rows_processed=0, duration_seconds=0,
-              laundering_rate=0.0, error_message=None):
+def log_audit(
+    pg_conn,
+    dag_id,
+    run_id,
+    task_id,
+    layer,
+    status,
+    rows_processed=0,
+    duration_seconds=0,
+    laundering_rate=0.0,
+    error_message=None,
+):
     cur = pg_conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO pipeline_audit_log
             (dag_id, run_id, task_id, layer, status, rows_processed,
              duration_seconds, laundering_rate, error_message)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (dag_id, run_id, task_id, layer, status,
-          rows_processed, duration_seconds, laundering_rate, error_message))
+    """,
+        (
+            dag_id,
+            run_id,
+            task_id,
+            layer,
+            status,
+            rows_processed,
+            duration_seconds,
+            laundering_rate,
+            error_message,
+        ),
+    )
     pg_conn.commit()
     cur.close()
 
 
 def feature_engineering(**context):
     import sys, time, io, os
-    sys.path.insert(0, '/opt/airflow/dags')
+
+    sys.path.insert(0, "/opt/airflow/dags")
     from config import get_pg_conn
     import duckdb
     import pandas as pd
 
     start_time = time.time()
-    dag_id = context['dag'].dag_id
-    run_id = context['run_id']
-    task_id = context['task'].task_id
-    job_name = 'gold.feature_engineering'
+    dag_id = context["dag"].dag_id
+    run_id = context["run_id"]
+    task_id = context["task"].task_id
+    job_name = "gold.feature_engineering"
 
-    pg_host = os.getenv('POSTGRES_HOST', 'postgres')
-    pg_port = os.getenv('POSTGRES_PORT', '5432')
-    pg_db   = os.getenv('POSTGRES_DB', 'aml_db')
-    pg_user = os.getenv('POSTGRES_USER', '')
-    pg_pass = os.getenv('POSTGRES_PASSWORD', '')
-    pg_dsn  = f"host={pg_host} port={pg_port} dbname={pg_db} user={pg_user} password={pg_pass}"
+    pg_host = os.getenv("POSTGRES_HOST", "postgres")
+    pg_port = os.getenv("POSTGRES_PORT", "5432")
+    pg_db = os.getenv("POSTGRES_DB", "aml_db")
+    pg_user = os.getenv("POSTGRES_USER", "")
+    pg_pass = os.getenv("POSTGRES_PASSWORD", "")
+    pg_dsn = f"host={pg_host} port={pg_port} dbname={pg_db} user={pg_user} password={pg_pass}"
 
     pg_conn = get_pg_conn()
-    emit_lineage('transactions_silver', 'transactions_gold_temp', run_id, job_name,
-                 event_type='START')
+    emit_lineage(
+        "transactions_silver",
+        "transactions_gold_temp",
+        run_id,
+        job_name,
+        event_type="START",
+    )
 
     cur = pg_conn.cursor()
     cur.execute("DROP TABLE IF EXISTS transactions_gold_temp")
@@ -224,15 +260,34 @@ def feature_engineering(**context):
 
         logger.info("Writing to PostgreSQL via COPY...")
         gold_cols = [
-            'transaction_id', 'timestamp', 'sender_account_masked',
-            'receiver_account_masked', 'sender_bank', 'receiver_bank',
-            'amount', 'amount_log', 'payment_currency', 'receiving_currency',
-            'payment_type', 'is_laundering', 'typology', 'source',
-            'tx_hour', 'tx_day_of_week', 'is_weekend', 'is_cross_currency',
-            'ingested_at', 'sender_tx_count_1h', 'sender_amount_sum_1h',
-            'sender_avg_amount', 'payment_type_risk', 'is_high_risk_type',
-            'is_structuring', 'is_round_amount', 'amount_vs_sender_avg',
-            'rule_score',
+            "transaction_id",
+            "timestamp",
+            "sender_account_masked",
+            "receiver_account_masked",
+            "sender_bank",
+            "receiver_bank",
+            "amount",
+            "amount_log",
+            "payment_currency",
+            "receiving_currency",
+            "payment_type",
+            "is_laundering",
+            "typology",
+            "source",
+            "tx_hour",
+            "tx_day_of_week",
+            "is_weekend",
+            "is_cross_currency",
+            "ingested_at",
+            "sender_tx_count_1h",
+            "sender_amount_sum_1h",
+            "sender_avg_amount",
+            "payment_type_risk",
+            "is_high_risk_type",
+            "is_structuring",
+            "is_round_amount",
+            "amount_vs_sender_avg",
+            "rule_score",
         ]
 
         WRITE_BATCH = 100_000
@@ -251,12 +306,12 @@ def feature_engineering(**context):
 
             cur = pg_conn.cursor()
             buf = io.StringIO()
-            df_batch.to_csv(buf, index=False, header=False, na_rep='\\N')
+            df_batch.to_csv(buf, index=False, header=False, na_rep="\\N")
             buf.seek(0)
-            cols_str = ', '.join(f'"{c}"' for c in gold_cols)
+            cols_str = ", ".join(f'"{c}"' for c in gold_cols)
             cur.copy_expert(
                 f"COPY transactions_gold_temp ({cols_str}) FROM STDIN WITH CSV NULL '\\N'",
-                buf
+                buf,
             )
             pg_conn.commit()
             cur.close()
@@ -270,54 +325,94 @@ def feature_engineering(**context):
         logger.info(f"Total written: {total_written:,} rows")
 
         duration = time.time() - start_time
-        log_audit(pg_conn, dag_id, run_id, task_id, 'gold', 'success',
-                  rows_processed=total_written, duration_seconds=round(duration, 2))
-        emit_lineage('transactions_silver', 'transactions_gold_temp', run_id, job_name,
-                     event_type='COMPLETE')
+        log_audit(
+            pg_conn,
+            dag_id,
+            run_id,
+            task_id,
+            "gold",
+            "success",
+            rows_processed=total_written,
+            duration_seconds=round(duration, 2),
+        )
+        emit_lineage(
+            "transactions_silver",
+            "transactions_gold_temp",
+            run_id,
+            job_name,
+            event_type="COMPLETE",
+        )
 
     except Exception as e:
         duration = time.time() - start_time
-        log_audit(pg_conn, dag_id, run_id, task_id, 'gold', 'failed',
-                  duration_seconds=round(duration, 2), error_message=str(e))
-        emit_lineage('transactions_silver', 'transactions_gold_temp', run_id, job_name,
-                     event_type='FAIL')
+        log_audit(
+            pg_conn,
+            dag_id,
+            run_id,
+            task_id,
+            "gold",
+            "failed",
+            duration_seconds=round(duration, 2),
+            error_message=str(e),
+        )
+        emit_lineage(
+            "transactions_silver",
+            "transactions_gold_temp",
+            run_id,
+            job_name,
+            event_type="FAIL",
+        )
         pg_conn.close()
         raise
 
     pg_conn.close()
-    context['ti'].xcom_push(key='gold_rows', value=total_written)
+    context["ti"].xcom_push(key="gold_rows", value=total_written)
     logger.info(f"Feature engineering done. {total_written:,} rows in {duration:.1f}s")
     return total_written
 
 
 def validate_gold(**context):
     import sys, time
-    sys.path.insert(0, '/opt/airflow/dags')
+
+    sys.path.insert(0, "/opt/airflow/dags")
     from config import get_pg_conn
 
     start_time = time.time()
-    dag_id = context['dag'].dag_id
-    run_id = context['run_id']
-    task_id = context['task'].task_id
-    job_name = 'gold.validate_gold'
+    dag_id = context["dag"].dag_id
+    run_id = context["run_id"]
+    task_id = context["task"].task_id
+    job_name = "gold.validate_gold"
 
     pg_conn = get_pg_conn()
     cur = pg_conn.cursor()
 
-    emit_lineage('transactions_gold_temp', 'transactions_gold_temp', run_id, job_name,
-                 event_type='START')
+    emit_lineage(
+        "transactions_gold_temp",
+        "transactions_gold_temp",
+        run_id,
+        job_name,
+        event_type="START",
+    )
 
     cur.execute("SELECT COUNT(*) FROM transactions_gold_temp")
     total = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM transactions_gold_temp WHERE transaction_id IS NULL")
+    cur.execute(
+        "SELECT COUNT(*) FROM transactions_gold_temp WHERE transaction_id IS NULL"
+    )
     nulls = cur.fetchone()[0]
     cur.execute("SELECT COUNT(*) FROM transactions_gold_temp WHERE rule_score IS NULL")
     null_score = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM transactions_gold_temp WHERE rule_score < 0 OR rule_score > 1")
+    cur.execute(
+        "SELECT COUNT(*) FROM transactions_gold_temp WHERE rule_score < 0 OR rule_score > 1"
+    )
     invalid_score = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM transactions_gold_temp WHERE sender_tx_count_1h IS NULL")
+    cur.execute(
+        "SELECT COUNT(*) FROM transactions_gold_temp WHERE sender_tx_count_1h IS NULL"
+    )
     null_tx_count = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM transactions_gold_temp WHERE amount_vs_sender_avg IS NULL")
+    cur.execute(
+        "SELECT COUNT(*) FROM transactions_gold_temp WHERE amount_vs_sender_avg IS NULL"
+    )
     null_avg_ratio = cur.fetchone()[0]
     cur.execute("""
         SELECT AVG(rule_score), MAX(rule_score), MIN(rule_score),
@@ -359,54 +454,80 @@ def validate_gold(**context):
     if total < 6_000_000:
         errors.append(f"row count too low: {total:,}")
 
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO pipeline_audit_log
             (dag_id, run_id, task_id, layer, status, rows_processed,
              duration_seconds, laundering_rate, error_message)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (dag_id, run_id, task_id, 'gold',
-          'failed' if errors else 'success',
-          total, round(duration, 2), rate,
-          str(errors) if errors else None))
+    """,
+        (
+            dag_id,
+            run_id,
+            task_id,
+            "gold",
+            "failed" if errors else "success",
+            total,
+            round(duration, 2),
+            rate,
+            str(errors) if errors else None,
+        ),
+    )
     pg_conn.commit()
     cur.close()
 
     if errors:
-        emit_lineage('transactions_gold_temp', 'transactions_gold_temp', run_id, job_name,
-                     event_type='FAIL')
+        emit_lineage(
+            "transactions_gold_temp",
+            "transactions_gold_temp",
+            run_id,
+            job_name,
+            event_type="FAIL",
+        )
         pg_conn.close()
         raise ValueError(f"Gold validation failed: {errors}")
 
-    emit_lineage('transactions_gold_temp', 'transactions_gold_temp', run_id, job_name,
-                 event_type='COMPLETE')
+    emit_lineage(
+        "transactions_gold_temp",
+        "transactions_gold_temp",
+        run_id,
+        job_name,
+        event_type="COMPLETE",
+    )
     pg_conn.close()
 
     logger.info("Gold validation passed!")
-    context['ti'].xcom_push(key='validated_rows', value=total)
-    context['ti'].xcom_push(key='laundering_count', value=laundering)
-    context['ti'].xcom_push(key='avg_rule_score', value=float(avg_score))
+    context["ti"].xcom_push(key="validated_rows", value=total)
+    context["ti"].xcom_push(key="laundering_count", value=laundering)
+    context["ti"].xcom_push(key="avg_rule_score", value=float(avg_score))
     return total
 
 
 def promote_to_gold(**context):
     import sys, time, io
-    sys.path.insert(0, '/opt/airflow/dags')
+
+    sys.path.insert(0, "/opt/airflow/dags")
     from config import get_pg_conn, get_s3_client
     import pandas as pd
     import pyarrow as pa
     import pyarrow.parquet as pq
 
     start_time = time.time()
-    dag_id = context['dag'].dag_id
-    run_id = context['run_id']
-    task_id = context['task'].task_id
-    job_name = 'gold.promote_to_gold'
+    dag_id = context["dag"].dag_id
+    run_id = context["run_id"]
+    task_id = context["task"].task_id
+    job_name = "gold.promote_to_gold"
 
     pg_conn = get_pg_conn()
     cur = pg_conn.cursor()
 
-    emit_lineage('transactions_gold_temp', 'transactions_featured', run_id, job_name,
-                 event_type='START')
+    emit_lineage(
+        "transactions_gold_temp",
+        "transactions_featured",
+        run_id,
+        job_name,
+        event_type="START",
+    )
 
     # idempotent rename รองรับ retry
     cur.execute("""
@@ -428,11 +549,11 @@ def promote_to_gold(**context):
 
     # write to MinIO via multipart upload ทีละ batch ไม่ buffer ทั้งหมด
     s3_client = get_s3_client()
-    gold_key = 'ibm_aml/year=2022/month=09/transactions.parquet'
+    gold_key = "ibm_aml/year=2022/month=09/transactions.parquet"
     logger.info("Writing to MinIO gold via multipart upload...")
 
     BATCH_SIZE = 100_000
-    batch_cur = pg_conn.cursor('gold_minio_cursor')
+    batch_cur = pg_conn.cursor("gold_minio_cursor")
     batch_cur.execute("SELECT * FROM transactions_featured")
 
     first_batch = batch_cur.fetchmany(BATCH_SIZE)
@@ -447,12 +568,12 @@ def promote_to_gold(**context):
         schema = table_first.schema
 
         # เริ่ม multipart upload
-        mpu = s3_client.create_multipart_upload(Bucket='gold', Key=gold_key)
-        upload_id = mpu['UploadId']
+        mpu = s3_client.create_multipart_upload(Bucket="gold", Key=gold_key)
+        upload_id = mpu["UploadId"]
         parts = []
         part_number = 1
         part_buf = io.BytesIO()
-        part_writer = pq.ParquetWriter(part_buf, schema, compression='snappy')
+        part_writer = pq.ParquetWriter(part_buf, schema, compression="snappy")
         PART_SIZE_ROWS = 1_000_000  # upload ทุก 1M rows
 
         try:
@@ -479,15 +600,19 @@ def promote_to_gold(**context):
                     part_buf.seek(0)
                     data = part_buf.read()
                     part = s3_client.upload_part(
-                        Bucket='gold', Key=gold_key,
-                        UploadId=upload_id, PartNumber=part_number,
-                        Body=data
+                        Bucket="gold",
+                        Key=gold_key,
+                        UploadId=upload_id,
+                        PartNumber=part_number,
+                        Body=data,
                     )
-                    parts.append({'PartNumber': part_number, 'ETag': part['ETag']})
+                    parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
                     logger.info(f"Uploaded part {part_number} ({total_written:,} rows)")
                     part_number += 1
                     part_buf = io.BytesIO()
-                    part_writer = pq.ParquetWriter(part_buf, schema, compression='snappy')
+                    part_writer = pq.ParquetWriter(
+                        part_buf, schema, compression="snappy"
+                    )
 
             batch_cur.close()
 
@@ -497,29 +622,33 @@ def promote_to_gold(**context):
             data = part_buf.read()
             if data:
                 part = s3_client.upload_part(
-                    Bucket='gold', Key=gold_key,
-                    UploadId=upload_id, PartNumber=part_number,
-                    Body=data
+                    Bucket="gold",
+                    Key=gold_key,
+                    UploadId=upload_id,
+                    PartNumber=part_number,
+                    Body=data,
                 )
-                parts.append({'PartNumber': part_number, 'ETag': part['ETag']})
+                parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
                 logger.info(f"Uploaded final part {part_number}")
 
             # complete multipart upload
             s3_client.complete_multipart_upload(
-                Bucket='gold', Key=gold_key,
+                Bucket="gold",
+                Key=gold_key,
                 UploadId=upload_id,
-                MultipartUpload={'Parts': parts}
+                MultipartUpload={"Parts": parts},
             )
             logger.info(f"Written: gold/{gold_key} ({total_written:,} rows)")
 
         except Exception as e:
             s3_client.abort_multipart_upload(
-                Bucket='gold', Key=gold_key, UploadId=upload_id
+                Bucket="gold", Key=gold_key, UploadId=upload_id
             )
             raise
 
     # create indexes
     import time as time_module
+
     pg_conn.commit()
     pg_conn.autocommit = True
     cur2 = pg_conn.cursor()
@@ -527,12 +656,30 @@ def promote_to_gold(**context):
     cur2.execute("SET max_parallel_maintenance_workers = 1")
 
     indexes = [
-        ("idx_gold_transaction_id", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_transaction_id ON transactions_featured(transaction_id)"),
-        ("idx_gold_timestamp",      "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_timestamp ON transactions_featured(timestamp)"),
-        ("idx_gold_is_laundering",  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_is_laundering ON transactions_featured(is_laundering)"),
-        ("idx_gold_rule_score",     "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_rule_score ON transactions_featured(rule_score)"),
-        ("idx_gold_sender",         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_sender ON transactions_featured(sender_account_masked)"),
-        ("idx_gold_payment_type",   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_payment_type ON transactions_featured(payment_type)"),
+        (
+            "idx_gold_transaction_id",
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_transaction_id ON transactions_featured(transaction_id)",
+        ),
+        (
+            "idx_gold_timestamp",
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_timestamp ON transactions_featured(timestamp)",
+        ),
+        (
+            "idx_gold_is_laundering",
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_is_laundering ON transactions_featured(is_laundering)",
+        ),
+        (
+            "idx_gold_rule_score",
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_rule_score ON transactions_featured(rule_score)",
+        ),
+        (
+            "idx_gold_sender",
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_sender ON transactions_featured(sender_account_masked)",
+        ),
+        (
+            "idx_gold_payment_type",
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gold_payment_type ON transactions_featured(payment_type)",
+        ),
     ]
 
     try:
@@ -543,46 +690,73 @@ def promote_to_gold(**context):
             time_module.sleep(10)
 
         duration = time.time() - start_time
-        emit_lineage('transactions_gold_temp', 'transactions_featured', run_id, job_name,
-                     event_type='COMPLETE')
+        emit_lineage(
+            "transactions_gold_temp",
+            "transactions_featured",
+            run_id,
+            job_name,
+            event_type="COMPLETE",
+        )
         pg_conn.autocommit = False
-        log_audit(pg_conn, dag_id, run_id, task_id, 'gold', 'success',
-                  duration_seconds=round(duration, 2))
+        log_audit(
+            pg_conn,
+            dag_id,
+            run_id,
+            task_id,
+            "gold",
+            "success",
+            duration_seconds=round(duration, 2),
+        )
 
     except Exception as e:
         duration = time.time() - start_time
-        emit_lineage('transactions_gold_temp', 'transactions_featured', run_id, job_name,
-                     event_type='FAIL')
+        emit_lineage(
+            "transactions_gold_temp",
+            "transactions_featured",
+            run_id,
+            job_name,
+            event_type="FAIL",
+        )
         pg_conn.autocommit = False
-        log_audit(pg_conn, dag_id, run_id, task_id, 'gold', 'failed',
-                  duration_seconds=round(duration, 2), error_message=str(e))
+        log_audit(
+            pg_conn,
+            dag_id,
+            run_id,
+            task_id,
+            "gold",
+            "failed",
+            duration_seconds=round(duration, 2),
+            error_message=str(e),
+        )
         raise
 
     cur2.close()
     cur.close()
     pg_conn.close()
 
-    total_rows = context['ti'].xcom_pull(task_ids='validate_gold', key='validated_rows')
+    total_rows = context["ti"].xcom_pull(task_ids="validate_gold", key="validated_rows")
     logger.info(f"Promote gold complete: {total_rows:,} rows in {duration:.1f}s")
     return total_rows
 
 
 def generate_alerts(**context):
     import sys, time
-    sys.path.insert(0, '/opt/airflow/dags')
+
+    sys.path.insert(0, "/opt/airflow/dags")
     from config import get_pg_conn
 
     start_time = time.time()
-    dag_id = context['dag'].dag_id
-    run_id = context['run_id']
-    task_id = context['task'].task_id
-    job_name = 'gold.generate_alerts'
+    dag_id = context["dag"].dag_id
+    run_id = context["run_id"]
+    task_id = context["task"].task_id
+    job_name = "gold.generate_alerts"
 
     pg_conn = get_pg_conn()
     cur = pg_conn.cursor()
 
-    emit_lineage('transactions_featured', 'aml_alerts', run_id, job_name,
-                 event_type='START')
+    emit_lineage(
+        "transactions_featured", "aml_alerts", run_id, job_name, event_type="START"
+    )
 
     cur.execute("""
         SELECT PERCENTILE_CONT(0.99)
@@ -637,47 +811,56 @@ def generate_alerts(**context):
         logger.info(f"  {typology}: {count:,} (avg score: {avg_score})")
 
     duration = time.time() - start_time
-    log_audit(pg_conn, dag_id, run_id, task_id, 'gold', 'success',
-              rows_processed=alert_count, duration_seconds=round(duration, 2))
-    emit_lineage('transactions_featured', 'aml_alerts', run_id, job_name,
-                 event_type='COMPLETE')
+    log_audit(
+        pg_conn,
+        dag_id,
+        run_id,
+        task_id,
+        "gold",
+        "success",
+        rows_processed=alert_count,
+        duration_seconds=round(duration, 2),
+    )
+    emit_lineage(
+        "transactions_featured", "aml_alerts", run_id, job_name, event_type="COMPLETE"
+    )
 
     cur.close()
     pg_conn.close()
 
-    context['ti'].xcom_push(key='alert_count', value=alert_count)
-    context['ti'].xcom_push(key='threshold', value=threshold)
+    context["ti"].xcom_push(key="alert_count", value=alert_count)
+    context["ti"].xcom_push(key="threshold", value=threshold)
     logger.info(f"Alert generation done. {alert_count:,} alerts in {duration:.1f}s")
     return alert_count
 
 
 with DAG(
-    dag_id='aml_gold_transform',
+    dag_id="aml_gold_transform",
     default_args=default_args,
-    description='AML Gold — DuckDB feature engineering → validate → promote → alerts',
-    schedule_interval='@once',
+    description="AML Gold — DuckDB feature engineering → validate → promote → alerts",
+    schedule_interval="@once",
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=['aml', 'gold', 'production'],
+    tags=["aml", "gold", "production"],
 ) as dag:
 
     t1 = PythonOperator(
-        task_id='feature_engineering',
+        task_id="feature_engineering",
         python_callable=feature_engineering,
         execution_timeout=timedelta(hours=1),
     )
     t2 = PythonOperator(
-        task_id='validate_gold',
+        task_id="validate_gold",
         python_callable=validate_gold,
         execution_timeout=timedelta(minutes=15),
     )
     t3 = PythonOperator(
-        task_id='promote_to_gold',
+        task_id="promote_to_gold",
         python_callable=promote_to_gold,
         execution_timeout=timedelta(minutes=60),
     )
     t4 = PythonOperator(
-        task_id='generate_alerts',
+        task_id="generate_alerts",
         python_callable=generate_alerts,
         execution_timeout=timedelta(minutes=10),
     )

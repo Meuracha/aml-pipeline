@@ -1,6 +1,7 @@
 """
 ML Model Tests — AML Pipeline
 """
+
 import pytest
 import numpy as np
 import pandas as pd
@@ -9,21 +10,31 @@ import argparse
 xgb = pytest.importorskip("xgboost", reason="xgboost not installed")
 
 FEATURES = [
-    'amount', 'amount_log', 'tx_hour', 'tx_day_of_week',
-    'is_weekend', 'is_cross_currency', 'sender_tx_count_1h',
-    'sender_amount_sum_1h', 'sender_avg_amount',
-    'amount_vs_sender_avg', 'payment_type_risk',
-    'is_high_risk_type', 'is_structuring',
-    'is_round_amount', 'rule_score'
+    "amount",
+    "amount_log",
+    "tx_hour",
+    "tx_day_of_week",
+    "is_weekend",
+    "is_cross_currency",
+    "sender_tx_count_1h",
+    "sender_amount_sum_1h",
+    "sender_avg_amount",
+    "amount_vs_sender_avg",
+    "payment_type_risk",
+    "is_high_risk_type",
+    "is_structuring",
+    "is_round_amount",
+    "rule_score",
 ]
 
 MIN_AUC_ROC = 0.85
-MIN_RECALL  = 0.20
+MIN_RECALL = 0.20
 
 
 @pytest.fixture
 def mock_xgboost_model():
     from unittest.mock import MagicMock
+
     model = MagicMock()
     model.predict.return_value = np.array([0.85])
     model.feature_names = FEATURES
@@ -33,30 +44,30 @@ def mock_xgboost_model():
 @pytest.fixture
 def sample_features():
     return {
-        'amount': 9500.0,
-        'amount_log': np.log1p(9500.0),
-        'tx_hour': 10,
-        'tx_day_of_week': 2,
-        'is_weekend': 0,
-        'is_cross_currency': 1,
-        'sender_tx_count_1h': 5,
-        'sender_amount_sum_1h': 47500.0,
-        'sender_avg_amount': 9500.0,
-        'amount_vs_sender_avg': 1.0,
-        'payment_type_risk': 0.8,
-        'is_high_risk_type': 1,
-        'is_structuring': 1,
-        'is_round_amount': 0,
-        'rule_score': 0.75,
+        "amount": 9500.0,
+        "amount_log": np.log1p(9500.0),
+        "tx_hour": 10,
+        "tx_day_of_week": 2,
+        "is_weekend": 0,
+        "is_cross_currency": 1,
+        "sender_tx_count_1h": 5,
+        "sender_amount_sum_1h": 47500.0,
+        "sender_avg_amount": 9500.0,
+        "amount_vs_sender_avg": 1.0,
+        "payment_type_risk": 0.8,
+        "is_high_risk_type": 1,
+        "is_structuring": 1,
+        "is_round_amount": 0,
+        "rule_score": 0.75,
     }
 
 
 class TestFeatureEngineering:
 
     def test_amount_log_calculation(self, sample_gold_df):
-        expected = np.log1p(sample_gold_df['amount'])
+        expected = np.log1p(sample_gold_df["amount"])
         np.testing.assert_array_almost_equal(
-            sample_gold_df['amount_log'], expected, decimal=4
+            sample_gold_df["amount_log"], expected, decimal=4
         )
 
     def test_all_features_present(self, sample_gold_df):
@@ -73,10 +84,10 @@ class TestFeatureEngineering:
                 assert not np.isinf(sample_gold_df[col]).any()
 
     def test_rule_score_combines_signals(self, sample_gold_df):
-        laundering = sample_gold_df[sample_gold_df['is_laundering'] == 1]
-        normal = sample_gold_df[sample_gold_df['is_laundering'] == 0]
+        laundering = sample_gold_df[sample_gold_df["is_laundering"] == 1]
+        normal = sample_gold_df[sample_gold_df["is_laundering"] == 0]
         if len(laundering) > 0 and len(normal) > 0:
-            assert laundering['rule_score'].mean() >= normal['rule_score'].mean()
+            assert laundering["rule_score"].mean() >= normal["rule_score"].mean()
 
 
 class TestModelPrediction:
@@ -118,19 +129,29 @@ class TestModelValidationGate:
 
     def test_feature_list_unchanged(self):
         expected = [
-            'amount', 'amount_log', 'tx_hour', 'tx_day_of_week',
-            'is_weekend', 'is_cross_currency', 'sender_tx_count_1h',
-            'sender_amount_sum_1h', 'sender_avg_amount',
-            'amount_vs_sender_avg', 'payment_type_risk',
-            'is_high_risk_type', 'is_structuring',
-            'is_round_amount', 'rule_score'
+            "amount",
+            "amount_log",
+            "tx_hour",
+            "tx_day_of_week",
+            "is_weekend",
+            "is_cross_currency",
+            "sender_tx_count_1h",
+            "sender_amount_sum_1h",
+            "sender_avg_amount",
+            "amount_vs_sender_avg",
+            "payment_type_risk",
+            "is_high_risk_type",
+            "is_structuring",
+            "is_round_amount",
+            "rule_score",
         ]
         assert FEATURES == expected
 
 
 def validate_production_model():
     import mlflow, os
-    mlflow.set_tracking_uri(os.getenv('MLFLOW_TRACKING_URI'))
+
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
     client = mlflow.MlflowClient()
     try:
         versions = client.get_latest_versions("aml_risk_model")
@@ -140,8 +161,8 @@ def validate_production_model():
         latest = versions[-1]
         run = client.get_run(latest.run_id)
         metrics = run.data.metrics
-        auc_roc = metrics.get('val_auc_roc', 0)
-        recall  = metrics.get('val_recall', 0)
+        auc_roc = metrics.get("val_auc_roc", 0)
+        recall = metrics.get("val_recall", 0)
         print(f"Val AUC-ROC: {auc_roc:.4f} (min: {MIN_AUC_ROC})")
         print(f"Val Recall:  {recall:.4f} (min: {MIN_RECALL})")
         if auc_roc < MIN_AUC_ROC:
@@ -159,8 +180,9 @@ def validate_production_model():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--validate-production', action='store_true')
+    parser.add_argument("--validate-production", action="store_true")
     args = parser.parse_args()
     if args.validate_production:
         import sys
+
         sys.exit(0 if validate_production_model() else 1)
