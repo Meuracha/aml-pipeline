@@ -1,7 +1,8 @@
+import logging
 from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,10 @@ def emit_lineage(
     output_namespace="mlflow",
     event_type="COMPLETE",
 ):
-    import requests, uuid, sys
+    import sys
+    import uuid
+
+    import requests
 
     sys.path.insert(0, "/opt/airflow/dags")
     from config import MARQUEZ_URL
@@ -97,13 +101,15 @@ def prepare_dataset(**context):
         time-based split Train/Val/Test
         save ลง MinIO ml/
     """
-    import sys, time, io
+    import io
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_pg_conn, get_s3_client
     import pandas as pd
     import pyarrow as pa
     import pyarrow.parquet as pq
+    from config import get_pg_conn, get_s3_client
 
     start_time = time.time()
     dag_id = context["dag"].dag_id
@@ -242,22 +248,25 @@ def train_model(**context):
         threshold tuning บน val set
         log metrics ใน MLflow
     """
-    import sys, time, io, os
+    import io
+    import os
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_s3_client
-    import pandas as pd
-    import numpy as np
-    import xgboost as xgb
     import mlflow
     import mlflow.xgboost
+    import numpy as np
+    import pandas as pd
+    import xgboost as xgb
+    from config import get_s3_client
     from sklearn.metrics import (
-        roc_auc_score,
         average_precision_score,
+        confusion_matrix,
+        f1_score,
         precision_score,
         recall_score,
-        f1_score,
-        confusion_matrix,
+        roc_auc_score,
     )
 
     start_time = time.time()
@@ -424,28 +433,31 @@ def evaluate_model(**context):
         SHAP feature importance (sample 5000)
         log ใน MLflow
     """
-    import sys, time, io, os
+    import io
+    import os
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_s3_client
-    import pandas as pd
-    import numpy as np
-    import xgboost as xgb
-    import shap
+    import matplotlib
     import mlflow
     import mlflow.xgboost
-    import matplotlib
+    import numpy as np
+    import pandas as pd
+    import shap
+    import xgboost as xgb
+    from config import get_s3_client
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from sklearn.metrics import (
-        roc_auc_score,
         average_precision_score,
+        classification_report,
+        confusion_matrix,
+        f1_score,
         precision_score,
         recall_score,
-        f1_score,
-        confusion_matrix,
-        classification_report,
+        roc_auc_score,
     )
 
     start_time = time.time()
@@ -570,17 +582,20 @@ def register_model(**context):
     ไม่ UPDATE PostgreSQL ทีละ row อีกต่อไป
     → ไม่ OOM, ไม่ timeout, เร็วกว่า 10-20x
     """
-    import sys, time, io, os
+    import io
+    import os
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_pg_conn, get_s3_client
-    import pandas as pd
-    import numpy as np
-    import xgboost as xgb
-    import pyarrow as pa
-    import pyarrow.parquet as pq
     import mlflow
     import mlflow.xgboost
+    import numpy as np
+    import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    import xgboost as xgb
+    from config import get_pg_conn, get_s3_client
     from mlflow import MlflowClient
 
     start_time = time.time()

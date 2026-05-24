@@ -3,9 +3,9 @@ Data Quality Tests — AML Pipeline
 Tests Bronze, Silver, Gold layer data quality
 """
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 
 class TestBronzeDataQuality:

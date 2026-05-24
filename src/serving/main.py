@@ -11,24 +11,24 @@ Architecture:
 - /predict → real-time scoring
 """
 
-import os
 import io
 import logging
+import os
 from contextlib import asynccontextmanager
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
 
 import boto3
+import mlflow
+import mlflow.xgboost
 import pandas as pd
 import psycopg2
 import psycopg2.extras
 import xgboost as xgb
-import mlflow
-import mlflow.xgboost
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from prometheus_fastapi_instrumentator import Instrumentator
+from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

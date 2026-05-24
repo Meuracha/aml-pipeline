@@ -1,7 +1,8 @@
+import logging
 from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,10 @@ def emit_lineage(
     output_namespace="postgres",
     event_type="COMPLETE",
 ):
-    import requests, uuid, sys
+    import sys
+    import uuid
+
+    import requests
 
     sys.path.insert(0, "/opt/airflow/dags")
     from config import MARQUEZ_URL
@@ -92,12 +96,15 @@ def log_audit(
 
 
 def feature_engineering(**context):
-    import sys, time, io, os
+    import io
+    import os
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_pg_conn
     import duckdb
     import pandas as pd
+    from config import get_pg_conn
 
     start_time = time.time()
     dag_id = context["dag"].dag_id
@@ -372,7 +379,8 @@ def feature_engineering(**context):
 
 
 def validate_gold(**context):
-    import sys, time
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
     from config import get_pg_conn
@@ -504,13 +512,15 @@ def validate_gold(**context):
 
 
 def promote_to_gold(**context):
-    import sys, time, io
+    import io
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_pg_conn, get_s3_client
     import pandas as pd
     import pyarrow as pa
     import pyarrow.parquet as pq
+    from config import get_pg_conn, get_s3_client
 
     start_time = time.time()
     dag_id = context["dag"].dag_id
@@ -740,7 +750,8 @@ def promote_to_gold(**context):
 
 
 def generate_alerts(**context):
-    import sys, time
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
     from config import get_pg_conn

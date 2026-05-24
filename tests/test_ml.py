@@ -2,10 +2,11 @@
 ML Model Tests — AML Pipeline
 """
 
-import pytest
+import argparse
+
 import numpy as np
 import pandas as pd
-import argparse
+import pytest
 
 xgb = pytest.importorskip("xgboost", reason="xgboost not installed")
 
@@ -149,7 +150,9 @@ class TestModelValidationGate:
 
 
 def validate_production_model():
-    import mlflow, os
+    import os
+
+    import mlflow
 
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
     client = mlflow.MlflowClient()

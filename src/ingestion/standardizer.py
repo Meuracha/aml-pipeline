@@ -1,6 +1,7 @@
-import pandas as pd
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
 
 
 def mask_account(account: str) -> str:
@@ -39,7 +40,7 @@ def validate(df: pd.DataFrame) -> dict:
 
 
 if __name__ == "__main__":
-    from collectors import load_ibm_aml, standardize, DATA_DIR
+    from collectors import DATA_DIR, load_ibm_aml, standardize
 
     path = DATA_DIR / "LI-Small_Trans.csv"
     raw = load_ibm_aml(str(path))

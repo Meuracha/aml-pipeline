@@ -2,9 +2,10 @@
 DAG Structure Tests — AML Pipeline
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "dags"))
 
@@ -53,7 +54,10 @@ class TestDAGStructure:
     @pytest.fixture(autouse=True)
     def import_dags(self):
         try:
-            import aml_bronze_dag, aml_silver_dag, aml_gold_dag, aml_ml_dag
+            import aml_bronze_dag
+            import aml_gold_dag
+            import aml_ml_dag
+            import aml_silver_dag
 
             self.bronze_dag = aml_bronze_dag.dag
             self.silver_dag = aml_silver_dag.dag

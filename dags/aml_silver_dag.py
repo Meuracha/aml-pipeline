@@ -1,7 +1,8 @@
+import logging
 from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,9 @@ def emit_lineage(
     output_namespace="postgres",
     event_type="COMPLETE",
 ):
-    import requests, uuid
+    import uuid
+
+    import requests
     from config import MARQUEZ_URL
 
     unique_run_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, run_id + job_name))
@@ -105,9 +108,10 @@ def log_audit(
 
 
 def transform_chunk(df):
-    import pandas as pd
-    import numpy as np
     import hashlib
+
+    import numpy as np
+    import pandas as pd
 
     df = df.copy()
     keys = (
@@ -204,12 +208,14 @@ def fast_copy(df, table_name, pg_conn, if_exists="append"):
 
 
 def read_transform_load(**context):
-    import sys, time
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_s3_client, get_pg_conn
-    import pyarrow.parquet as pq
     import io
+
+    import pyarrow.parquet as pq
+    from config import get_pg_conn, get_s3_client
 
     start_time = time.time()
     dag_id = context["dag"].dag_id
@@ -354,7 +360,8 @@ def read_transform_load(**context):
 
 
 def validate_staging(**context):
-    import sys, time
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
     from config import get_pg_conn
@@ -482,13 +489,15 @@ def validate_staging(**context):
 
 
 def promote_to_silver(**context):
-    import sys, io, time
+    import io
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_s3_client, get_pg_conn
     import pandas as pd
     import pyarrow as pa
     import pyarrow.parquet as pq
+    from config import get_pg_conn, get_s3_client
 
     start_time = time.time()
     dag_id = context["dag"].dag_id
@@ -643,7 +652,8 @@ def promote_to_silver(**context):
 
 
 def create_indexes(**context):
-    import sys, time
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
     from config import get_pg_conn

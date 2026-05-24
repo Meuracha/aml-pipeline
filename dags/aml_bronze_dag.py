@@ -1,7 +1,8 @@
+import logging
 from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,9 @@ def emit_lineage(
     output_namespace="minio",
     event_type="COMPLETE",
 ):
-    import requests, uuid
+    import uuid
+
+    import requests
     from config import MARQUEZ_URL
 
     unique_run_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, run_id + job_name))
@@ -87,14 +90,16 @@ def log_audit(
 
 
 def upload_to_bronze(**context):
-    import sys, time
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_s3_client, get_pg_conn
+    import io
+
     import pandas as pd
     import pyarrow as pa
     import pyarrow.parquet as pq
-    import io
+    from config import get_pg_conn, get_s3_client
 
     start_time = time.time()
     dag_id = context["dag"].dag_id
@@ -218,12 +223,14 @@ def upload_to_bronze(**context):
 
 
 def validate_bronze(**context):
-    import sys, time
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_s3_client, get_pg_conn
-    import pyarrow.parquet as pq
     import io
+
+    import pyarrow.parquet as pq
+    from config import get_pg_conn, get_s3_client
 
     start_time = time.time()
     dag_id = context["dag"].dag_id
@@ -328,13 +335,15 @@ def validate_bronze(**context):
 
 
 def route_dead_letter(**context):
-    import sys, time
+    import sys
+    import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    from config import get_s3_client, get_pg_conn
-    import pyarrow.parquet as pq
-    import pyarrow as pa
     import io
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from config import get_pg_conn, get_s3_client
 
     start_time = time.time()
     dag_id = context["dag"].dag_id
