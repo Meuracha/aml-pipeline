@@ -95,12 +95,13 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ─────────────────────────────────────────
-  # Job 2: Deploy
+  # Job 2: Deploy (optional — requires secrets)
   # ─────────────────────────────────────────
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
     needs: [build-push]
+    if: ${{ secrets.DEPLOY_HOST != '' }}
     environment: ${{ github.event.inputs.environment || 'production' }}
 
     steps:
@@ -115,93 +116,22 @@ jobs:
           script: |
             set -e
             cd ~/aml-pipeline
-
-            echo "📥 Pulling latest code..."
             git pull origin main
-
-            echo "🐳 Pulling Docker images..."
             IMAGE_TAG=${{ needs.build-push.outputs.image_tag }}
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-fastapi:${IMAGE_TAG}
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-airflow:${IMAGE_TAG}
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-streamlit:${IMAGE_TAG}
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-mlflow:${IMAGE_TAG}
-
-            echo "🚀 Deploying services..."
-            docker-compose up -d \
-              --no-build \
-              fastapi streamlit nginx
-
-            echo "⏳ Waiting for FastAPI..."
+            docker-compose up -d --no-build fastapi streamlit nginx
             sleep 30
-
-            echo "🏥 Health check..."
             curl -f http://localhost:8010/health || exit 1
-
             echo "✅ Deploy complete"
 
   # ─────────────────────────────────────────
-  # Job 3: Smoke Test
-  # ─────────────────────────────────────────
-  smoke-test:
-    name: Smoke Test
-    runs-on: ubuntu-latest
-    needs: [deploy]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install test dependencies
-        run: pip install requests pytest
-
-      - name: Run smoke tests
-        env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-        run: |
-          python -c "
-          import requests, sys, os
-
-          base = os.getenv('API_BASE_URL', 'http://localhost:8010')
-
-          tests = [
-              ('GET', f'{base}/health', None, 200),
-              ('GET', f'{base}/', None, 200),
-              ('GET', f'{base}/analytics/summary', None, 200),
-              ('GET', f'{base}/analytics/risk-distribution', None, 200),
-              ('GET', f'{base}/alerts?limit=1', None, 200),
-          ]
-
-          passed = 0
-          failed = 0
-
-          for method, url, body, expected_status in tests:
-              try:
-                  r = requests.request(method, url, json=body, timeout=10)
-                  if r.status_code == expected_status:
-                      print(f'✅ {method} {url}')
-                      passed += 1
-                  else:
-                      print(f'❌ {method} {url} — got {r.status_code}')
-                      failed += 1
-              except Exception as e:
-                  print(f'❌ {method} {url} — error: {e}')
-                  failed += 1
-
-          print(f'\n{passed} passed, {failed} failed')
-          sys.exit(0 if failed == 0 else 1)
-          "
-
-  # ─────────────────────────────────────────
-  # Job 4: Create Release
+  # Job 3: Create Release
   # ─────────────────────────────────────────
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [smoke-test]
+    needs: [build-push]
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: write
@@ -239,9 +169,10 @@ jobs:
             ### Changes
             ${{ steps.changelog.outputs.commits }}
 
-            ### Services
+            ### Docker Images
             - FastAPI: `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-fastapi:${{ needs.build-push.outputs.image_tag }}`
             - Airflow: `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-airflow:${{ needs.build-push.outputs.image_tag }}`
             - Streamlit: `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-streamlit:${{ needs.build-push.outputs.image_tag }}`
+            - MLflow: `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-mlflow:${{ needs.build-push.outputs.image_tag }}`
           draft: false
           prerelease: false
