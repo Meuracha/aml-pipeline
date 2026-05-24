@@ -1,0 +1,247 @@
+name: CD — AML Pipeline Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deploy environment
+        required: true
+        default: production
+        type: choice
+        options: [production, staging]
+
+env:
+  PYTHON_VERSION: "3.11"
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/aml-pipeline
+
+jobs:
+  # ─────────────────────────────────────────
+  # Job 1: Build & Push Images
+  # ─────────────────────────────────────────
+  build-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build & Push FastAPI
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.api
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-fastapi:${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Airflow
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.airflow
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-airflow:${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Streamlit
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.streamlit
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-streamlit:${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push MLflow
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.mlflow
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-mlflow:${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─────────────────────────────────────────
+  # Job 2: Deploy
+  # ─────────────────────────────────────────
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: [build-push]
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/aml-pipeline
+
+            echo "📥 Pulling latest code..."
+            git pull origin main
+
+            echo "🐳 Pulling Docker images..."
+            IMAGE_TAG=${{ needs.build-push.outputs.image_tag }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-fastapi:${IMAGE_TAG}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-airflow:${IMAGE_TAG}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-streamlit:${IMAGE_TAG}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-mlflow:${IMAGE_TAG}
+
+            echo "🚀 Deploying services..."
+            docker-compose up -d \
+              --no-build \
+              fastapi streamlit nginx
+
+            echo "⏳ Waiting for FastAPI..."
+            sleep 30
+
+            echo "🏥 Health check..."
+            curl -f http://localhost:8010/health || exit 1
+
+            echo "✅ Deploy complete"
+
+  # ─────────────────────────────────────────
+  # Job 3: Smoke Test
+  # ─────────────────────────────────────────
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: [deploy]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: pip install requests pytest
+
+      - name: Run smoke tests
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          python -c "
+          import requests, sys, os
+
+          base = os.getenv('API_BASE_URL', 'http://localhost:8010')
+
+          tests = [
+              ('GET', f'{base}/health', None, 200),
+              ('GET', f'{base}/', None, 200),
+              ('GET', f'{base}/analytics/summary', None, 200),
+              ('GET', f'{base}/analytics/risk-distribution', None, 200),
+              ('GET', f'{base}/alerts?limit=1', None, 200),
+          ]
+
+          passed = 0
+          failed = 0
+
+          for method, url, body, expected_status in tests:
+              try:
+                  r = requests.request(method, url, json=body, timeout=10)
+                  if r.status_code == expected_status:
+                      print(f'✅ {method} {url}')
+                      passed += 1
+                  else:
+                      print(f'❌ {method} {url} — got {r.status_code}')
+                      failed += 1
+              except Exception as e:
+                  print(f'❌ {method} {url} — error: {e}')
+                  failed += 1
+
+          print(f'\n{passed} passed, {failed} failed')
+          sys.exit(0 if failed == 0 else 1)
+          "
+
+  # ─────────────────────────────────────────
+  # Job 4: Create Release
+  # ─────────────────────────────────────────
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [smoke-test]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" -20)
+          else
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s")
+          fi
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
+          body: |
+            ## AML Pipeline Release v${{ github.run_number }}
+
+            **Deployed:** ${{ github.event.head_commit.timestamp }}
+            **Commit:** ${{ github.sha }}
+            **Branch:** ${{ github.ref_name }}
+
+            ### Changes
+            ${{ steps.changelog.outputs.commits }}
+
+            ### Services
+            - FastAPI: `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-fastapi:${{ needs.build-push.outputs.image_tag }}`
+            - Airflow: `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-airflow:${{ needs.build-push.outputs.image_tag }}`
+            - Streamlit: `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-streamlit:${{ needs.build-push.outputs.image_tag }}`
+          draft: false
+          prerelease: false

@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Environment
+.env
+
+# Data (ไม่ commit raw data)
+data/
+
+# Logs
+logs/
+
+# MacOS
+.DS_Store
+
+# Sensitive
+.env
+*.env
+docker/grafana/provisioning/datasources/datasources.yml
+
+# Coverage
+coverage.xml
+coverage_html/
+.pytest_cache/
+
+# Airflow
+airflow.db
+
+# macOS
+.DS_Store
+**/.DS_Store
+docker/grafana/provisioning/datasources/datasources.yml

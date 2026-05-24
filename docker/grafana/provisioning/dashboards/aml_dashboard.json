@@ -1,0 +1,665 @@
+{
+  "title": "AML Pipeline Monitoring",
+  "uid": "aml-pipeline-v2",
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "tags": [
+    "aml",
+    "production"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Request Rate",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{job=\"fastapi\"}[5m])",
+          "legendFormat": "{{method}} {{handler}} {{status}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "API Latency (p50, p95, p99)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"fastapi\"}[5m]))",
+          "legendFormat": "p50",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"fastapi\"}[5m]))",
+          "legendFormat": "p95",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"fastapi\"}[5m]))",
+          "legendFormat": "p99",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Total Transactions",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PCC52D03280B7034C"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT 'Total' AS metric, COUNT(*) AS value FROM transactions_featured",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "PCC52D03280B7034C"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Total Alerts",
+      "type": "stat",
+      "gridPos": {
+        "x": 4,
+        "y": 8,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PCC52D03280B7034C"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT 'Alerts' AS metric, COUNT(*) AS value FROM aml_alerts",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "PCC52D03280B7034C"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Open Alerts",
+      "type": "stat",
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PCC52D03280B7034C"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT 'Open' AS metric, COUNT(*) AS value FROM aml_alerts WHERE status = 'OPEN'",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "PCC52D03280B7034C"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Laundering Rate %",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PCC52D03280B7034C"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT 'Rate' AS metric, ROUND((SUM(is_laundering)::float / COUNT(*) * 100)::numeric, 4) AS value FROM transactions_featured",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "PCC52D03280B7034C"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 4,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 7,
+      "title": "API Error Rate",
+      "type": "stat",
+      "gridPos": {
+        "x": 16,
+        "y": 8,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"fastapi\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"fastapi\"}[5m])) * 100 or vector(0)",
+          "legendFormat": "Error Rate",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Avg Rule Score",
+      "type": "stat",
+      "gridPos": {
+        "x": 20,
+        "y": 8,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PCC52D03280B7034C"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT 'Avg Score' AS metric, ROUND(AVG(rule_score)::numeric, 4) AS value FROM transactions_featured",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "PCC52D03280B7034C"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 4,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 9,
+      "title": "Alerts by Typology",
+      "type": "piechart",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PCC52D03280B7034C"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT typology AS metric, COUNT(*) AS value FROM aml_alerts GROUP BY typology ORDER BY value DESC",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "PCC52D03280B7034C"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": true
+        },
+        "pieType": "donut",
+        "legend": {
+          "displayMode": "list",
+          "placement": "right"
+        },
+        "displayLabels": [
+          "percent",
+          "name"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "title": "Daily Transaction Volume",
+      "type": "barchart",
+      "gridPos": {
+        "x": 8,
+        "y": 12,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PCC52D03280B7034C"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT DATE(timestamp)::text AS date, COUNT(*) AS transactions, SUM(is_laundering) AS laundering FROM transactions_featured GROUP BY DATE(timestamp) ORDER BY date",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "PCC52D03280B7034C"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "laundering"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "date",
+        "barWidth": 0.6,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "API Logs",
+      "type": "logs",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "targets": [
+        {
+          "expr": "{container=\"aml-pipeline-fastapi-1\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending"
+      }
+    }
+  ]
+}

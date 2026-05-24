@@ -1,0 +1,64 @@
+version: "1.0"
+name: aml_transaction_contract
+description: Data contract for AML transaction monitoring pipeline
+
+sources:
+  ibm_aml:
+    description: IBM Transactions for Anti-Money Laundering
+    format: csv
+    columns:
+      timestamp: {type: datetime, required: true}
+      from_bank: {type: string, required: true}
+      account: {type: string, required: true}
+      to_bank: {type: string, required: true}
+      account_1: {type: string, required: true}
+      amount_received: {type: float, required: true}
+      receiving_currency: {type: string, required: true}
+      amount_paid: {type: float, required: true}
+      payment_currency: {type: string, required: true}
+      payment_format: {type: string, required: true}
+      is_laundering: {type: integer, required: true, values: [0, 1]}
+
+  saml_d:
+    description: Synthetic AML Dataset with 28 typologies
+    format: csv
+    columns:
+      timestamp: {type: datetime, required: true}
+      from_bank: {type: string, required: true}
+      from_account: {type: string, required: true}
+      to_bank: {type: string, required: true}
+      to_account: {type: string, required: true}
+      amount: {type: float, required: true}
+      currency: {type: string, required: true}
+      payment_type: {type: string, required: true}
+      is_laundering: {type: integer, required: true, values: [0, 1]}
+      typology: {type: string, required: false}
+
+unified_schema:
+  description: Standardized schema after ingestion
+  columns:
+    transaction_id: {type: string, required: true, unique: true}
+    timestamp: {type: datetime, required: true}
+    sender_account: {type: string, required: true}
+    receiver_account: {type: string, required: true}
+    sender_bank: {type: string, required: true}
+    receiver_bank: {type: string, required: true}
+    amount: {type: float, required: true, min: 0}
+    payment_currency: {type: string, required: true}
+    receiving_currency: {type: string, required: true}
+    payment_type: {type: string, required: true}
+    is_laundering: {type: integer, required: true, values: [0, 1]}
+    typology: {type: string, required: false}
+    source: {type: string, required: true, values: [ibm_aml, saml_d]}
+
+quality_rules:
+  - no_null_in_required_fields
+  - amount_positive
+  - valid_currency_codes
+  - timestamp_not_future
+  - no_duplicate_transaction_id
+
+sla:
+  max_ingestion_delay_minutes: 60
+  min_completeness_pct: 99.5
+  max_error_rate_pct: 0.5

@@ -1,0 +1,374 @@
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.airflow
+  env_file: .env
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'aml_secret_key'
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+    AIRFLOW__WEBSERVER__WORKERS: '1'
+    AIRFLOW__WEBSERVER__WORKER_TIMEOUT: '300'
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    MINIO_ENDPOINT: http://minio:9000
+    AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+    AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./src:/opt/airflow/src
+    - ./data:/opt/airflow/data
+    - airflow_logs:/opt/airflow/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+
+services:
+
+  # ════════════════════════════════════════
+  # DATA LAYER
+  # ════════════════════════════════════════
+
+  postgres:
+    image: postgres:15
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    env_file: .env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  minio-setup:
+    image: minio/mc
+    env_file: .env
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        sleep 3;
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+        mc mb --ignore-existing local/bronze;
+        mc mb --ignore-existing local/silver;
+        mc mb --ignore-existing local/gold;
+        mc mb --ignore-existing local/dead-letter;
+        mc mb --ignore-existing local/mlflow-artifacts;
+        echo 'All buckets created';
+        exit 0;
+      "
+    restart: on-failure
+
+  # ════════════════════════════════════════
+  # ORCHESTRATION LAYER
+  # ════════════════════════════════════════
+
+  airflow-init:
+    <<: *airflow-common
+    command: bash -c "airflow db migrate && airflow users create --username $$AIRFLOW_ADMIN_USER --password $$AIRFLOW_ADMIN_PASSWORD --firstname Admin --lastname User --role Admin --email admin@aml.com"
+    restart: on-failure
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: airflow webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: airflow scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob"]
+      interval: 60s
+      timeout: 60s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+
+  # ════════════════════════════════════════
+  # ML LAYER
+  # ════════════════════════════════════════
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mlflow
+    platform: linux/arm64
+    env_file: .env
+    ports:
+      - "5010:5000"
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/mlflow_db
+        --default-artifact-root s3://mlflow-artifacts/
+        --workers 1
+        --allowed-hosts *
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+
+  # ════════════════════════════════════════
+  # SERVING LAYER
+  # ════════════════════════════════════════
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    env_file: .env
+    ports:
+      - "8010:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      fastapi:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ════════════════════════════════════════
+  # DASHBOARD LAYER
+  # ════════════════════════════════════════
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.streamlit
+    env_file: .env
+    ports:
+      - "8501:8501"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fastapi:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # ════════════════════════════════════════
+  # MONITORING LAYER
+  # ════════════════════════════════════════
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./docker/loki.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["NONE"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./docker/promtail.yml:/etc/promtail/config.yml
+      - airflow_logs:/opt/airflow/logs
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_started
+    healthcheck:
+      test: ["NONE"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # ════════════════════════════════════════
+  # DATA LINEAGE LAYER
+  # ════════════════════════════════════════
+
+  marquez:
+    image: marquezproject/marquez:latest
+    platform: linux/amd64
+    ports:
+      - "5001:5000"
+      - "5002:5001"
+    environment:
+      MARQUEZ_CONFIG: /opt/marquez/config.yml
+      MARQUEZ_DB: ${POSTGRES_DB}
+      MARQUEZ_DB_USER: ${POSTGRES_USER}
+      MARQUEZ_DB_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./docker/marquez/config.yml:/opt/marquez/config.yml
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/namespaces"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  marquez-web:
+    image: marquezproject/marquez-web:latest
+    platform: linux/amd64
+    ports:
+      - "3001:3000"
+    environment:
+      MARQUEZ_HOST: marquez
+      MARQUEZ_PORT: 5000
+      WEB_PORT: 3000
+    depends_on:
+      marquez:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  minio_data:
+  mlflow_artifacts:
+  airflow_logs:
+  grafana_data:
+  prometheus_data:
+  loki_data:

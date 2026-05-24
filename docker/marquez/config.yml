@@ -1,0 +1,16 @@
+server:
+  applicationConnectors:
+    - type: http
+      port: 5000
+  adminConnectors:
+    - type: http
+      port: 5001
+
+db:
+  driverClass: org.postgresql.Driver
+  url: jdbc:postgresql://postgres:5432/marquez_db
+  user: ${MARQUEZ_DB_USER}
+  password: ${MARQUEZ_DB_PASSWORD}
+
+logging:
+  level: INFO
