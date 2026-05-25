@@ -15,6 +15,7 @@ import io
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import List, Optional
 
 import boto3
@@ -65,8 +66,8 @@ def get_s3():
     return boto3.client(
         "s3",
         endpoint_url=os.getenv("MINIO_ENDPOINT", "http://minio:9000"),
-        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", ""),
-        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", ""),
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "minio_user"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "minio_password"),
     )
 
 
@@ -75,8 +76,8 @@ def get_pg():
         host=os.getenv("POSTGRES_HOST", "postgres"),
         port=os.getenv("POSTGRES_PORT", "5432"),
         dbname=os.getenv("POSTGRES_DB", "aml_db"),
-        user=os.getenv("POSTGRES_USER", ""),
-        password=os.getenv("POSTGRES_PASSWORD", ""),
+        user=os.getenv("POSTGRES_USER", "aml_user"),
+        password=os.getenv("POSTGRES_PASSWORD", "aml_password"),
     )
 
 
@@ -355,8 +356,8 @@ def get_alerts(
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         params.extend([limit, offset])
 
-        cur.execute(  # nosec B608
-            f"""  # nosec B608
+        cur.execute(
+            f"""
             SELECT alert_id, transaction_id, risk_score, typology, status, created_at
             FROM aml_alerts
             {where}
@@ -540,6 +541,7 @@ def get_risk_distribution():
 
     scores = [v[0] for v in app_state["scores"].values()]
 
+    bins = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     labels = [
         "0-0.1",
         "0.1-0.2",

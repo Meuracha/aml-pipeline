@@ -96,11 +96,7 @@ def log_audit(
 
 
 def prepare_dataset(**context):
-    """
-    t1: อ่าน Gold features จาก PostgreSQL
-        time-based split Train/Val/Test
-        save ลง MinIO ml/
-    """
+    """t1: read Gold features, time-based split, save to MinIO"""
     import io
     import sys
     import time
@@ -147,11 +143,9 @@ def prepare_dataset(**context):
     logger.info("Reading gold features from PostgreSQL...")
     BATCH_SIZE = 200_000
     batch_cur = pg_conn.cursor("ml_dataset_cursor")
-    batch_cur.execute(f"""
-        SELECT {', '.join(feature_cols)}
-        FROM transactions_featured
-        ORDER BY timestamp
-    """)  # nosec B608
+    batch_cur.execute(  # nosec B608
+        f"SELECT {', '.join(feature_cols)} FROM transactions_featured ORDER BY timestamp"
+    )
 
     first_batch = batch_cur.fetchmany(BATCH_SIZE)
     if not first_batch:
@@ -173,7 +167,6 @@ def prepare_dataset(**context):
     logger.info(f"Total: {len(df):,} rows")
 
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-
     train_end = pd.Timestamp("2022-09-07 23:59:59")
     val_end = pd.Timestamp("2022-09-09 23:59:59")
 
@@ -182,13 +175,7 @@ def prepare_dataset(**context):
     df_test = df[df["timestamp"] > val_end].copy()
 
     logger.info(
-        f"Train: {len(df_train):,} rows, laundering: {df_train['is_laundering'].sum():,}"
-    )
-    logger.info(
-        f"Val:   {len(df_val):,} rows, laundering: {df_val['is_laundering'].sum():,}"
-    )
-    logger.info(
-        f"Test:  {len(df_test):,} rows, laundering: {df_test['is_laundering'].sum():,}"
+        f"Train: {len(df_train):,}, Val: {len(df_val):,}, Test: {len(df_test):,}"
     )
 
     for split_df in [df_train, df_val, df_test]:
@@ -224,7 +211,6 @@ def prepare_dataset(**context):
     emit_lineage(
         "transactions_featured", "ml/dataset", run_id, job_name, event_type="COMPLETE"
     )
-
     pg_conn.commit()
     pg_conn.close()
 
@@ -234,7 +220,6 @@ def prepare_dataset(**context):
     context["ti"].xcom_push(key="scale_pos_weight", value=scale_pos_weight)
     context["ti"].xcom_push(key="pos_count", value=pos)
     context["ti"].xcom_push(key="neg_count", value=neg)
-
     logger.info(
         f"Dataset ready. scale_pos_weight={scale_pos_weight} in {duration:.1f}s"
     )
@@ -242,12 +227,7 @@ def prepare_dataset(**context):
 
 
 def train_model(**context):
-    """
-    t2: train XGBoost บน train set
-        early stopping บน val set
-        threshold tuning บน val set
-        log metrics ใน MLflow
-    """
+    """t2: train XGBoost, threshold tuning, log to MLflow"""
     import io
     import os
     import sys
@@ -292,7 +272,6 @@ def train_model(**context):
         obj = s3.get_object(Bucket="gold", Key=key)
         return pd.read_parquet(io.BytesIO(obj["Body"].read()))
 
-    logger.info("Loading train/val data...")
     df_train = load_parquet("ml/train.parquet")
     df_val = load_parquet("ml/val.parquet")
 
@@ -320,10 +299,6 @@ def train_model(**context):
     X_val = df_val[FEATURES].astype(float)
     y_val = df_val[TARGET].astype(int)
 
-    logger.info(f"Train: {len(X_train):,} rows")
-    logger.info(f"Val:   {len(X_val):,} rows")
-    logger.info(f"scale_pos_weight: {scale_pos_weight}")
-
     dtrain = xgb.DMatrix(X_train, label=y_train, feature_names=FEATURES)
     dval = xgb.DMatrix(X_val, label=y_val, feature_names=FEATURES)
 
@@ -346,8 +321,6 @@ def train_model(**context):
     with mlflow.start_run(
         run_name=f'xgboost_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}'
     ) as mlrun:
-
-        logger.info("Training XGBoost...")
         model = xgb.train(
             params,
             dtrain,
@@ -358,8 +331,6 @@ def train_model(**context):
         )
 
         y_val_prob = model.predict(dval)
-
-        logger.info("Tuning threshold on val set...")
         best_f1 = 0
         best_threshold = 0.5
 
@@ -382,11 +353,7 @@ def train_model(**context):
         val_f1 = f1_score(y_val, y_val_pred, zero_division=0)
         cm = confusion_matrix(y_val, y_val_pred)
 
-        logger.info(f"Val AUC-ROC  : {val_auc_roc:.4f}")
-        logger.info(f"Val AUC-PR   : {val_auc_pr:.4f}")
-        logger.info(f"Val Recall   : {val_recall:.4f}")
-        logger.info(f"Val Precision: {val_precision:.4f}")
-        logger.info(f"Val F1       : {val_f1:.4f}")
+        logger.info(f"Val AUC-ROC: {val_auc_roc:.4f}, Recall: {val_recall:.4f}")
         logger.info(f"Confusion Matrix:\n{cm}")
 
         mlflow.log_params(params)
@@ -400,9 +367,7 @@ def train_model(**context):
         mlflow.log_metric("val_f1", val_f1)
         mlflow.log_metric("best_rounds", model.best_iteration)
         mlflow.xgboost.log_model(model, artifact_path="xgboost_model")
-
         mlrun_id = mlrun.info.run_id
-        logger.info(f"MLflow run_id: {mlrun_id}")
 
     duration = time.time() - start_time
     emit_lineage(
@@ -422,20 +387,16 @@ def train_model(**context):
     context["ti"].xcom_push(key="val_recall", value=float(val_recall))
     context["ti"].xcom_push(key="val_f1", value=float(val_f1))
     context["ti"].xcom_push(key="features", value=FEATURES)
-
     logger.info(f"Training done in {duration:.1f}s")
     return mlrun_id
 
 
 def evaluate_model(**context):
-    """
-    t3: evaluate บน test set
-        SHAP feature importance (sample 5000)
-        log ใน MLflow
-    """
+    """t3: evaluate on test set, SHAP, log to MLflow"""
     import io
     import os
     import sys
+    import tempfile
     import time
 
     sys.path.insert(0, "/opt/airflow/dags")
@@ -481,14 +442,12 @@ def evaluate_model(**context):
         event_type="START",
     )
 
-    logger.info("Loading test data...")
     obj = s3.get_object(Bucket="gold", Key="ml/test.parquet")
     df_test = pd.read_parquet(io.BytesIO(obj["Body"].read()))
 
     X_test = df_test[FEATURES].astype(float)
     y_test = df_test["is_laundering"].astype(int)
 
-    logger.info(f"Loading model from MLflow run: {mlrun_id}")
     model_uri = f"runs:/{mlrun_id}/xgboost_model"
     model = mlflow.xgboost.load_model(model_uri)
 
@@ -503,18 +462,12 @@ def evaluate_model(**context):
     test_f1 = f1_score(y_test, y_test_pred, zero_division=0)
     cm = confusion_matrix(y_test, y_test_pred)
 
-    logger.info(f"Test AUC-ROC  : {test_auc_roc:.4f}")
-    logger.info(f"Test AUC-PR   : {test_auc_pr:.4f}")
-    logger.info(f"Test Recall   : {test_recall:.4f}")
-    logger.info(f"Test Precision: {test_precision:.4f}")
-    logger.info(f"Test F1       : {test_f1:.4f}")
+    logger.info(f"Test AUC-ROC: {test_auc_roc:.4f}, Recall: {test_recall:.4f}")
     logger.info(f"Confusion Matrix:\n{cm}")
     logger.info(f"\n{classification_report(y_test, y_test_pred)}")
 
-    logger.info("Computing SHAP values (sample 5000 rows)...")
     sample_size = min(5000, len(X_test))
     X_sample = X_test.sample(sample_size, random_state=42)
-
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(X_sample)
 
@@ -523,19 +476,16 @@ def evaluate_model(**context):
         shap_values, X_sample, feature_names=FEATURES, show=False, max_display=15
     )
     plt.tight_layout()
-    import tempfile
-
-    shap_path = tempfile.mktemp(suffix=".png")  # nosec B108
+    with tempfile.NamedTemporaryFile(  # nosec B306
+        suffix=".png", delete=False
+    ) as tmp_file:
+        shap_path = tmp_file.name
     plt.savefig(shap_path, dpi=100, bbox_inches="tight")
     plt.close()
 
     shap_importance = pd.DataFrame(
         {"feature": FEATURES, "importance": np.abs(shap_values).mean(axis=0)}
     ).sort_values("importance", ascending=False)
-
-    logger.info("SHAP Feature Importance:")
-    for _, row in shap_importance.iterrows():
-        logger.info(f"  {row['feature']}: {row['importance']:.4f}")
 
     with mlflow.start_run(run_id=mlrun_id):
         mlflow.log_metric("test_auc_roc", test_auc_roc)
@@ -565,25 +515,12 @@ def evaluate_model(**context):
     context["ti"].xcom_push(
         key="shap_importance", value=shap_importance.to_dict("records")
     )
-
     logger.info(f"Evaluation done in {duration:.1f}s")
     return test_auc_roc
 
 
 def register_model(**context):
-    """
-    t4: register model ใน MLflow Model Registry
-
-    Architecture ใหม่ (เร็วกว่าเดิมมาก ~15 นาที):
-    1. register model ใน MLflow
-    2. score ทีละ batch → collect ทั้งหมด
-    3. save scores.parquet ลง MinIO (gold/ml/scores.parquet)
-       → transaction_id, ml_probability, final_risk_score
-    4. FastAPI และ Streamlit อ่าน scores จาก MinIO แทน PostgreSQL
-
-    ไม่ UPDATE PostgreSQL ทีละ row อีกต่อไป
-    → ไม่ OOM, ไม่ timeout, เร็วกว่า 10-20x
-    """
+    """t4: register model in MLflow, score all transactions, save to MinIO"""
     import io
     import os
     import sys
@@ -626,8 +563,6 @@ def register_model(**context):
         event_type="START",
     )
 
-    # register model
-    logger.info("Registering model in MLflow Model Registry...")
     model_uri = f"runs:/{mlrun_id}/xgboost_model"
     mv = mlflow.register_model(model_uri, "aml_risk_model")
 
@@ -647,12 +582,7 @@ def register_model(**context):
     )
     logger.info(f"Model registered: aml_risk_model version {mv.version}")
 
-    # load model
-    logger.info("Loading model for scoring...")
     model = mlflow.xgboost.load_model(model_uri)
-
-    # score ทีละ batch แล้ว collect ผลลัพธ์ทั้งหมด
-    logger.info("Scoring all transactions...")
     pg_conn = get_pg_conn()
     s3 = get_s3_client()
 
@@ -664,12 +594,13 @@ def register_model(**context):
 
     while True:
         cur = pg_conn.cursor()
-        cur.execute(f"""
-            SELECT transaction_id, {', '.join(FEATURES)}
-            FROM transactions_featured
-            ORDER BY timestamp
-            LIMIT {BATCH_SIZE} OFFSET {offset}
-        """)  # nosec B608
+        sql = (  # nosec B608
+            f"SELECT transaction_id, {', '.join(FEATURES)} "
+            f"FROM transactions_featured "
+            f"ORDER BY timestamp "
+            f"LIMIT {BATCH_SIZE} OFFSET {offset}"
+        )
+        cur.execute(sql)
         rows = cur.fetchall()
         cur.close()
 
@@ -678,13 +609,11 @@ def register_model(**context):
 
         cols = ["transaction_id"] + FEATURES
         df_batch = pd.DataFrame(rows, columns=cols)
-
         X_batch = df_batch[FEATURES].astype(float)
         ml_prob = model.predict(xgb.DMatrix(X_batch, feature_names=FEATURES))
 
         all_tx_ids.extend(df_batch["transaction_id"].tolist())
         all_scores.extend(ml_prob.tolist())
-
         total_scored += len(df_batch)
         offset += BATCH_SIZE
         logger.info(f"Scored {total_scored:,} transactions...")
@@ -692,8 +621,6 @@ def register_model(**context):
 
     logger.info(f"All {total_scored:,} transactions scored")
 
-    # save scores ลง MinIO เป็น parquet
-    logger.info("Saving scores to MinIO gold/ml/scores.parquet...")
     df_scores = pd.DataFrame(
         {
             "transaction_id": all_tx_ids,
@@ -708,9 +635,7 @@ def register_model(**context):
     pq.write_table(table, buf, compression="snappy")
     buf.seek(0)
     s3.put_object(Bucket="gold", Key="ml/scores.parquet", Body=buf.getvalue())
-    logger.info(
-        f"Saved: gold/ml/scores.parquet ({total_scored:,} rows, {buf.tell()/1e6:.1f} MB)"
-    )
+    logger.info(f"Saved: gold/ml/scores.parquet ({total_scored:,} rows)")
     del df_scores, buf
 
     duration = time.time() - start_time
@@ -733,15 +658,12 @@ def register_model(**context):
         output_namespace="minio",
         event_type="COMPLETE",
     )
-
     pg_conn.close()
 
-    logger.info(
-        f"Model registered & {total_scored:,} transactions scored in {duration:.1f}s"
-    )
     context["ti"].xcom_push(key="model_version", value=mv.version)
     context["ti"].xcom_push(key="total_scored", value=total_scored)
     context["ti"].xcom_push(key="scores_path", value="gold/ml/scores.parquet")
+    logger.info(f"Done: {total_scored:,} transactions scored in {duration:.1f}s")
     return mv.version
 
 
@@ -754,7 +676,6 @@ with DAG(
     catchup=False,
     tags=["aml", "ml", "production"],
 ) as dag:
-
     t1 = PythonOperator(
         task_id="prepare_dataset",
         python_callable=prepare_dataset,
@@ -775,5 +696,4 @@ with DAG(
         python_callable=register_model,
         execution_timeout=timedelta(hours=1),
     )
-
     t1 >> t2 >> t3 >> t4

@@ -294,10 +294,11 @@ def feature_engineering(**context):
         offset = 0
 
         while True:
-            df_batch = duck.execute(  # nosec B608
-                f"SELECT {', '.join(gold_cols)} FROM gold_features "
+            sql = (
+                f"SELECT {', '.join(gold_cols)} FROM gold_features "  # nosec B608
                 f"LIMIT {WRITE_BATCH} OFFSET {offset}"
-            ).df()
+            )
+            df_batch = duck.execute(sql).df()
 
             if df_batch.empty:
                 break
