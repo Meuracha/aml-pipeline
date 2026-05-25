@@ -2,8 +2,6 @@
 FastAPI Endpoint Tests — AML Pipeline
 Tests all API endpoints with mocked dependencies
 """
-
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -54,8 +52,7 @@ def client(mock_app_state):
 
     with patch("src.serving.main.app_state", mock_app_state), patch(
         "src.serving.main.get_pg"
-    ) as mock_pg, patch("src.serving.main.get_s3") as mock_s3:
-
+    ) as mock_pg, patch("src.serving.main.get_s3"):
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_conn.cursor.return_value = mock_cur
@@ -103,21 +100,25 @@ class TestHealth:
 class TestRiskLevel:
 
     def test_get_risk_level_critical(self):
+        from src.serving.main import get_risk_level
 
         assert get_risk_level(0.95) == "CRITICAL"
         assert get_risk_level(0.90) == "CRITICAL"
 
     def test_get_risk_level_high(self):
+        from src.serving.main import get_risk_level
 
         assert get_risk_level(0.85) == "HIGH"
         assert get_risk_level(0.70) == "HIGH"
 
     def test_get_risk_level_medium(self):
+        from src.serving.main import get_risk_level
 
         assert get_risk_level(0.65) == "MEDIUM"
         assert get_risk_level(0.40) == "MEDIUM"
 
     def test_get_risk_level_low(self):
+        from src.serving.main import get_risk_level
 
         assert get_risk_level(0.39) == "LOW"
         assert get_risk_level(0.0) == "LOW"
@@ -153,7 +154,6 @@ class TestBatchTransactions:
         results = {
             r["transaction_id"]: r["risk_level"] for r in response.json()["results"]
         }
-
         assert results["tx_0001"] == "CRITICAL"  # score 0.95
         assert results["tx_0002"] == "HIGH"  # score 0.75
         assert results["tx_0003"] == "MEDIUM"  # score 0.50
@@ -187,10 +187,8 @@ class TestPredict:
         import numpy as np
 
         mock_app_state["model"].predict.return_value = np.array([0.85])
-
         response = client.post("/predict", json=self.SAMPLE_PAYLOAD)
         assert response.status_code == 200
-
         data = response.json()
         assert "ml_probability" in data
         assert "final_risk_score" in data
@@ -201,10 +199,8 @@ class TestPredict:
         import numpy as np
 
         mock_app_state["model"].predict.return_value = np.array([0.75])
-
         response = client.post("/predict", json=self.SAMPLE_PAYLOAD)
         data = response.json()
-
         assert 0 <= data["ml_probability"] <= 1
         assert 0 <= data["final_risk_score"] <= 1
 
@@ -212,10 +208,8 @@ class TestPredict:
         import numpy as np
 
         mock_app_state["model"].predict.return_value = np.array([0.95])
-
         response = client.post("/predict", json=self.SAMPLE_PAYLOAD)
         data = response.json()
-
         assert data["is_suspicious"] is True
         assert data["risk_level"] == "CRITICAL"
 
@@ -223,10 +217,8 @@ class TestPredict:
         import numpy as np
 
         mock_app_state["model"].predict.return_value = np.array([0.30])
-
         response = client.post("/predict", json=self.SAMPLE_PAYLOAD)
         data = response.json()
-
         assert data["is_suspicious"] is False
         assert data["risk_level"] == "LOW"
 
@@ -255,7 +247,5 @@ class TestAlertUpdate:
     def test_valid_statuses_accepted(self, client):
         """Test that valid status values are accepted by the endpoint"""
         valid_statuses = ["OPEN", "INVESTIGATING", "CLOSED"]
-
-        # Just verify the endpoint logic, not the DB operation
         for status in valid_statuses:
             assert status in {"OPEN", "INVESTIGATING", "CLOSED"}
