@@ -52,7 +52,7 @@ def emit_lineage(
             else:
                 logger.warning(f"Lineage failed: {resp.status_code}")
             break
-        except Exception as e:
+        except Exception:
             if attempt < 2:
                 logger.warning(f"Lineage retry {attempt+1}/3: {e}")
             else:
@@ -350,7 +350,7 @@ def feature_engineering(**context):
             event_type="COMPLETE",
         )
 
-    except Exception as e:
+    except Exception:
         duration = time.time() - start_time
         log_audit(
             pg_conn,
@@ -434,7 +434,7 @@ def validate_gold(**context):
     rate = laundering / total * 100 if total > 0 else 0
     duration = time.time() - start_time
 
-    logger.info(f"Gold validation:")
+    logger.info("Gold validation:")
     logger.info(f"  total rows         : {total:,}")
     logger.info(f"  null tx_id         : {nulls}")
     logger.info(f"  null rule_score    : {null_score}")
@@ -650,7 +650,7 @@ def promote_to_gold(**context):
             )
             logger.info(f"Written: gold/{gold_key} ({total_written:,} rows)")
 
-        except Exception as e:
+        except Exception:
             s3_client.abort_multipart_upload(
                 Bucket="gold", Key=gold_key, UploadId=upload_id
             )
@@ -718,7 +718,7 @@ def promote_to_gold(**context):
             duration_seconds=round(duration, 2),
         )
 
-    except Exception as e:
+    except Exception:
         duration = time.time() - start_time
         emit_lineage(
             "transactions_gold_temp",

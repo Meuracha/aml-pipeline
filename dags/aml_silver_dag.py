@@ -414,7 +414,7 @@ def validate_staging(**context):
     rate = laundering / total * 100 if total > 0 else 0
     duration = time.time() - start_time
 
-    logger.info(f"Staging validation:")
+    logger.info("Staging validation:")
     logger.info(f"  total rows      : {total:,}")
     logger.info(f"  laundering rate : {rate:.4f}%")
     logger.info(f"  null tx_id      : {nulls}")

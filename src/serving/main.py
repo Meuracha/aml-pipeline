@@ -15,7 +15,6 @@ import io
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
 from typing import List, Optional
 
 import boto3
@@ -541,7 +540,6 @@ def get_risk_distribution():
 
     scores = [v[0] for v in app_state["scores"].values()]
 
-    bins = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     labels = [
         "0-0.1",
         "0.1-0.2",
