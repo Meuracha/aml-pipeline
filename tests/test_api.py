@@ -2,6 +2,7 @@
 FastAPI Endpoint Tests — AML Pipeline
 Tests all API endpoints with mocked dependencies
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
