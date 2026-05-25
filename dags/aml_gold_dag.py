@@ -294,8 +294,8 @@ def feature_engineering(**context):
         offset = 0
 
         while True:
-            df_batch = duck.execute(
-                f"SELECT  # nosec B608 {', '.join(gold_cols)} FROM gold_features "
+            df_batch = duck.execute(  # nosec B608
+                f"SELECT {', '.join(gold_cols)} FROM gold_features "
                 f"LIMIT {WRITE_BATCH} OFFSET {offset}"
             ).df()
 

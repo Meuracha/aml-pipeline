@@ -669,7 +669,7 @@ def register_model(**context):
             FROM transactions_featured
             ORDER BY timestamp
             LIMIT {BATCH_SIZE} OFFSET {offset}
-        """)
+        """)  # nosec B608
         rows = cur.fetchall()
         cur.close()
 

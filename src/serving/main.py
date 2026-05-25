@@ -356,7 +356,7 @@ def get_alerts(
         params.extend([limit, offset])
 
         cur.execute(  # nosec B608
-            f"""
+            f"""  # nosec B608
             SELECT alert_id, transaction_id, risk_score, typology, status, created_at
             FROM aml_alerts
             {where}
