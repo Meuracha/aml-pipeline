@@ -52,7 +52,7 @@ def emit_lineage(
             else:
                 logger.warning(f"Lineage failed: {resp.status_code}")
             break
-        except Exception:
+        except Exception as e:
             if attempt < 2:
                 logger.warning(f"Lineage retry {attempt+1}/3: {e}")
             else:
@@ -103,7 +103,6 @@ def feature_engineering(**context):
 
     sys.path.insert(0, "/opt/airflow/dags")
     import duckdb
-    import pandas as pd
     from config import get_pg_conn
 
     start_time = time.time()
@@ -117,7 +116,10 @@ def feature_engineering(**context):
     pg_db = os.getenv("POSTGRES_DB", "aml_db")
     pg_user = os.getenv("POSTGRES_USER", "")
     pg_pass = os.getenv("POSTGRES_PASSWORD", "")
-    pg_dsn = f"host={pg_host} port={pg_port} dbname={pg_db} user={pg_user} password={pg_pass}"
+    pg_dsn = (
+        f"host={pg_host} port={pg_port} dbname={pg_db} "
+        f"user={pg_user} password={pg_pass}"
+    )
 
     pg_conn = get_pg_conn()
     emit_lineage(
@@ -133,6 +135,9 @@ def feature_engineering(**context):
     pg_conn.commit()
     cur.close()
     logger.info("Dropped old temp table")
+
+    total_written = 0
+    duration = 0
 
     try:
         logger.info("Connecting DuckDB to PostgreSQL...")
@@ -164,23 +169,19 @@ def feature_engineering(**context):
                 t.is_weekend,
                 t.is_cross_currency,
                 t.ingested_at,
-
                 COUNT(*) OVER (
                     PARTITION BY t.sender_account_masked
                     ORDER BY t.timestamp
                     RANGE BETWEEN INTERVAL '1 hour' PRECEDING AND CURRENT ROW
                 ) AS sender_tx_count_1h,
-
                 SUM(t.amount) OVER (
                     PARTITION BY t.sender_account_masked
                     ORDER BY t.timestamp
                     RANGE BETWEEN INTERVAL '1 hour' PRECEDING AND CURRENT ROW
                 ) AS sender_amount_sum_1h,
-
                 AVG(t.amount) OVER (
                     PARTITION BY t.sender_account_masked
                 ) AS sender_avg_amount,
-
                 CASE t.payment_type
                     WHEN 'ACH'          THEN 1.000
                     WHEN 'Bitcoin'      THEN 0.109
@@ -191,31 +192,25 @@ def feature_engineering(**context):
                     WHEN 'Reinvestment' THEN 0.000
                     ELSE 0.050
                 END AS payment_type_risk,
-
                 CASE WHEN t.payment_type IN ('ACH', 'Bitcoin')
                     THEN 1 ELSE 0
                 END AS is_high_risk_type,
-
                 CASE WHEN t.amount >= 9000 AND t.amount < 10000
                     THEN 1 ELSE 0
                 END AS is_structuring,
-
                 CASE WHEN CAST(t.amount AS BIGINT) % 1000 = 0 AND t.amount > 0
                     THEN 1 ELSE 0
                 END AS is_round_amount
-
             FROM pg.transactions_silver t
         """)
         logger.info("Base features computed")
 
-        logger.info("Computing derived features...")
         duck.execute("ALTER TABLE gold_features ADD COLUMN amount_vs_sender_avg DOUBLE")
         duck.execute("ALTER TABLE gold_features ADD COLUMN rule_score DOUBLE")
         duck.execute("""
             UPDATE gold_features SET
                 amount_vs_sender_avg = LEAST(
-                    amount / GREATEST(sender_avg_amount, 0.01),
-                    1000.0
+                    amount / GREATEST(sender_avg_amount, 0.01), 1000.0
                 ),
                 rule_score = LEAST(
                     payment_type_risk  * 0.30
@@ -228,7 +223,6 @@ def feature_engineering(**context):
         """)
         logger.info("Derived features computed")
 
-        logger.info("Creating gold_temp in PostgreSQL...")
         cur = pg_conn.cursor()
         cur.execute("""
             CREATE TABLE transactions_gold_temp (
@@ -265,7 +259,6 @@ def feature_engineering(**context):
         pg_conn.commit()
         cur.close()
 
-        logger.info("Writing to PostgreSQL via COPY...")
         gold_cols = [
             "transaction_id",
             "timestamp",
@@ -299,14 +292,12 @@ def feature_engineering(**context):
 
         WRITE_BATCH = 100_000
         offset = 0
-        total_written = 0
 
         while True:
-            df_batch = duck.execute(f"""
-                SELECT {', '.join(gold_cols)}
-                FROM gold_features
-                LIMIT {WRITE_BATCH} OFFSET {offset}
-            """).df()
+            df_batch = duck.execute(  # nosec B608
+                f"SELECT {', '.join(gold_cols)} FROM gold_features "
+                f"LIMIT {WRITE_BATCH} OFFSET {offset}"
+            ).df()
 
             if df_batch.empty:
                 break
@@ -350,7 +341,7 @@ def feature_engineering(**context):
             event_type="COMPLETE",
         )
 
-    except Exception:
+    except Exception as err:
         duration = time.time() - start_time
         log_audit(
             pg_conn,
@@ -360,7 +351,7 @@ def feature_engineering(**context):
             "gold",
             "failed",
             duration_seconds=round(duration, 2),
-            error_message=str(e),
+            error_message=str(err),
         )
         emit_lineage(
             "transactions_silver",
@@ -434,19 +425,13 @@ def validate_gold(**context):
     rate = laundering / total * 100 if total > 0 else 0
     duration = time.time() - start_time
 
-    logger.info("Gold validation:")
-    logger.info(f"  total rows         : {total:,}")
-    logger.info(f"  null tx_id         : {nulls}")
-    logger.info(f"  null rule_score    : {null_score}")
-    logger.info(f"  invalid rule_score : {invalid_score}")
-    logger.info(f"  null tx_count_1h   : {null_tx_count}")
-    logger.info(f"  null avg_ratio     : {null_avg_ratio}")
-    logger.info(f"  avg rule_score     : {avg_score:.4f}")
-    logger.info(f"  max rule_score     : {max_score:.4f}")
-    logger.info(f"  min rule_score     : {min_score:.4f}")
-    logger.info(f"  avg sender_tx_1h   : {avg_tx_1h:.2f}")
-    logger.info(f"  max sender_tx_1h   : {max_tx_1h}")
-    logger.info(f"  laundering count   : {laundering:,} ({rate:.4f}%)")
+    logger.info(
+        f"Gold validation: {total:,} rows, laundering: {laundering:,} ({rate:.4f}%)"
+    )
+    logger.info(
+        f"  avg rule_score: {avg_score:.4f}, max: {max_score:.4f}, min: {min_score:.4f}"
+    )
+    logger.info(f"  avg sender_tx_1h: {avg_tx_1h:.2f}, max: {max_tx_1h}")
 
     errors = []
     if nulls > 0:
@@ -503,7 +488,6 @@ def validate_gold(**context):
         event_type="COMPLETE",
     )
     pg_conn.close()
-
     logger.info("Gold validation passed!")
     context["ti"].xcom_push(key="validated_rows", value=total)
     context["ti"].xcom_push(key="laundering_count", value=laundering)
@@ -515,6 +499,7 @@ def promote_to_gold(**context):
     import io
     import sys
     import time
+    import time as time_module
 
     sys.path.insert(0, "/opt/airflow/dags")
     import pandas as pd
@@ -539,14 +524,12 @@ def promote_to_gold(**context):
         event_type="START",
     )
 
-    # idempotent rename รองรับ retry
     cur.execute("""
         DO $$
         BEGIN
             IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'transactions_gold_temp') THEN
                 DROP TABLE IF EXISTS transactions_featured;
                 ALTER TABLE transactions_gold_temp RENAME TO transactions_featured;
-                RAISE NOTICE 'Renamed gold_temp to transactions_featured';
             ELSIF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'transactions_featured') THEN
                 RAISE NOTICE 'transactions_featured already exists, skipping rename';
             ELSE
@@ -557,11 +540,8 @@ def promote_to_gold(**context):
     pg_conn.commit()
     logger.info("transactions_featured ready")
 
-    # write to MinIO via multipart upload ทีละ batch ไม่ buffer ทั้งหมด
     s3_client = get_s3_client()
     gold_key = "ibm_aml/year=2022/month=09/transactions.parquet"
-    logger.info("Writing to MinIO gold via multipart upload...")
-
     BATCH_SIZE = 100_000
     batch_cur = pg_conn.cursor("gold_minio_cursor")
     batch_cur.execute("SELECT * FROM transactions_featured")
@@ -571,29 +551,23 @@ def promote_to_gold(**context):
 
     if first_batch:
         minio_cols = [desc[0] for desc in batch_cur.description]
-
-        # สร้าง schema จาก first batch
         df_first = pd.DataFrame(first_batch, columns=minio_cols)
         table_first = pa.Table.from_pandas(df_first, preserve_index=False)
         schema = table_first.schema
 
-        # เริ่ม multipart upload
         mpu = s3_client.create_multipart_upload(Bucket="gold", Key=gold_key)
         upload_id = mpu["UploadId"]
         parts = []
         part_number = 1
         part_buf = io.BytesIO()
         part_writer = pq.ParquetWriter(part_buf, schema, compression="snappy")
-        PART_SIZE_ROWS = 1_000_000  # upload ทุก 1M rows
+        PART_SIZE_ROWS = 1_000_000
 
         try:
-            # process first batch
             part_writer.write_table(table_first)
             total_written += len(df_first)
-            logger.info(f"  buffered {total_written:,} rows...")
             del df_first, table_first
 
-            # loop ต่อ
             while True:
                 rows = batch_cur.fetchmany(BATCH_SIZE)
                 if not rows:
@@ -601,10 +575,8 @@ def promote_to_gold(**context):
                 df = pd.DataFrame(rows, columns=minio_cols)
                 part_writer.write_table(pa.Table.from_pandas(df, preserve_index=False))
                 total_written += len(df)
-                logger.info(f"  buffered {total_written:,} rows...")
                 del df
 
-                # upload part ทุก PART_SIZE_ROWS
                 if total_written % PART_SIZE_ROWS == 0:
                     part_writer.close()
                     part_buf.seek(0)
@@ -617,7 +589,6 @@ def promote_to_gold(**context):
                         Body=data,
                     )
                     parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
-                    logger.info(f"Uploaded part {part_number} ({total_written:,} rows)")
                     part_number += 1
                     part_buf = io.BytesIO()
                     part_writer = pq.ParquetWriter(
@@ -625,8 +596,6 @@ def promote_to_gold(**context):
                     )
 
             batch_cur.close()
-
-            # upload part สุดท้าย
             part_writer.close()
             part_buf.seek(0)
             data = part_buf.read()
@@ -639,9 +608,7 @@ def promote_to_gold(**context):
                     Body=data,
                 )
                 parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
-                logger.info(f"Uploaded final part {part_number}")
 
-            # complete multipart upload
             s3_client.complete_multipart_upload(
                 Bucket="gold",
                 Key=gold_key,
@@ -655,9 +622,6 @@ def promote_to_gold(**context):
                 Bucket="gold", Key=gold_key, UploadId=upload_id
             )
             raise
-
-    # create indexes
-    import time as time_module
 
     pg_conn.commit()
     pg_conn.autocommit = True
@@ -692,6 +656,7 @@ def promote_to_gold(**context):
         ),
     ]
 
+    duration = 0
     try:
         for name, sql in indexes:
             logger.info(f"Creating index: {name}...")
@@ -718,7 +683,7 @@ def promote_to_gold(**context):
             duration_seconds=round(duration, 2),
         )
 
-    except Exception:
+    except Exception as err:
         duration = time.time() - start_time
         emit_lineage(
             "transactions_gold_temp",
@@ -736,14 +701,13 @@ def promote_to_gold(**context):
             "gold",
             "failed",
             duration_seconds=round(duration, 2),
-            error_message=str(e),
+            error_message=str(err),
         )
         raise
 
     cur2.close()
     cur.close()
     pg_conn.close()
-
     total_rows = context["ti"].xcom_pull(task_ids="validate_gold", key="validated_rows")
     logger.info(f"Promote gold complete: {total_rows:,} rows in {duration:.1f}s")
     return total_rows
@@ -770,8 +734,7 @@ def generate_alerts(**context):
     )
 
     cur.execute("""
-        SELECT PERCENTILE_CONT(0.99)
-        WITHIN GROUP (ORDER BY rule_score)
+        SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY rule_score)
         FROM transactions_featured
     """)
     threshold = float(cur.fetchone()[0])
@@ -787,25 +750,19 @@ def generate_alerts(**context):
             transaction_id,
             rule_score,
             CASE
-                WHEN is_structuring = 1 AND sender_tx_count_1h > 5
-                    THEN 'structuring_rapid'
-                WHEN is_structuring = 1
-                    THEN 'structuring'
-                WHEN is_high_risk_type = 1 AND is_cross_currency = 1
-                    THEN 'cross_currency_high_risk'
-                WHEN sender_tx_count_1h > 10
-                    THEN 'rapid_movement'
-                WHEN amount_vs_sender_avg > 10
-                    THEN 'unusual_amount'
-                WHEN is_round_amount = 1 AND amount > 50000
-                    THEN 'large_round_amount'
+                WHEN is_structuring = 1 AND sender_tx_count_1h > 5 THEN 'structuring_rapid'
+                WHEN is_structuring = 1 THEN 'structuring'
+                WHEN is_high_risk_type = 1 AND is_cross_currency = 1 THEN 'cross_currency_high_risk'
+                WHEN sender_tx_count_1h > 10 THEN 'rapid_movement'
+                WHEN amount_vs_sender_avg > 10 THEN 'unusual_amount'
+                WHEN is_round_amount = 1 AND amount > 50000 THEN 'large_round_amount'
                 ELSE 'suspicious_pattern'
             END,
             'OPEN'
         FROM transactions_featured
         WHERE rule_score >= {threshold}
         ORDER BY rule_score DESC
-    """)
+        """)  # nosec B608
     pg_conn.commit()
 
     cur.execute("SELECT COUNT(*) FROM aml_alerts")
@@ -813,9 +770,7 @@ def generate_alerts(**context):
 
     cur.execute("""
         SELECT typology, COUNT(*), ROUND(AVG(risk_score)::numeric, 4)
-        FROM aml_alerts
-        GROUP BY typology
-        ORDER BY COUNT(*) DESC
+        FROM aml_alerts GROUP BY typology ORDER BY COUNT(*) DESC
     """)
     logger.info(f"Generated {alert_count:,} alerts (threshold: {threshold:.4f})")
     for typology, count, avg_score in cur.fetchall():
@@ -838,7 +793,6 @@ def generate_alerts(**context):
 
     cur.close()
     pg_conn.close()
-
     context["ti"].xcom_push(key="alert_count", value=alert_count)
     context["ti"].xcom_push(key="threshold", value=threshold)
     logger.info(f"Alert generation done. {alert_count:,} alerts in {duration:.1f}s")
@@ -854,7 +808,6 @@ with DAG(
     catchup=False,
     tags=["aml", "gold", "production"],
 ) as dag:
-
     t1 = PythonOperator(
         task_id="feature_engineering",
         python_callable=feature_engineering,
@@ -875,5 +828,4 @@ with DAG(
         python_callable=generate_alerts,
         execution_timeout=timedelta(minutes=10),
     )
-
     t1 >> t2 >> t3 >> t4

@@ -3,6 +3,7 @@ Shared test fixtures for AML Pipeline tests
 """
 
 import os
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -16,12 +17,12 @@ import pytest
 def set_env():
     os.environ.setdefault("POSTGRES_HOST", "localhost")
     os.environ.setdefault("POSTGRES_PORT", "5432")
-    os.environ.setdefault("POSTGRES_USER", "test_user")
-    os.environ.setdefault("POSTGRES_PASSWORD", "test_password")
+    os.environ.setdefault("POSTGRES_USER", "aml_user")
+    os.environ.setdefault("POSTGRES_PASSWORD", "aml_password")
     os.environ.setdefault("POSTGRES_DB", "aml_db")
     os.environ.setdefault("MINIO_ENDPOINT", "http://localhost:9000")
-    os.environ.setdefault("AWS_ACCESS_KEY_ID", "test_minio_user")
-    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test_minio_password")
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", "minio_user")
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "minio_password")
     os.environ.setdefault("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
 
