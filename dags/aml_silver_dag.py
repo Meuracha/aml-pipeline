@@ -48,7 +48,6 @@ def emit_lineage(
     from config import MARQUEZ_URL
 
     unique_run_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, run_id + job_name))
-
     event = {
         "eventType": event_type,
         "eventTime": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
@@ -58,7 +57,6 @@ def emit_lineage(
         "outputs": [{"namespace": output_namespace, "name": output_dataset}],
         "producer": "aml_pipeline/airflow",
     }
-
     try:
         resp = requests.post(MARQUEZ_URL + "/api/v1/lineage", json=event, timeout=5)
         if resp.status_code == 201:
@@ -126,7 +124,9 @@ def transform_chunk(df):
         + "_"
         + df["Payment Format"].astype(str)
     )
-    df["transaction_id"] = keys.map(lambda x: hashlib.md5(x.encode()).hexdigest())
+    df["transaction_id"] = keys.map(
+        lambda x: hashlib.md5(x.encode(), usedforsecurity=False).hexdigest()
+    )
     df["timestamp"] = pd.to_datetime(df["Timestamp"])
     df["sender_account_masked"] = "****" + df["Account_sender"].astype(str).str[-4:]
     df["receiver_account_masked"] = "****" + df["Account_receiver"].astype(str).str[-4:]
@@ -180,9 +180,8 @@ def fast_copy(df, table_name, pg_conn, if_exists="append"):
     import io
 
     cur = pg_conn.cursor()
-
     if if_exists == "replace":
-        cur.execute(f"DROP TABLE IF EXISTS {table_name}")
+        cur.execute(f"DROP TABLE IF EXISTS {table_name}")  # nosec B608
         pg_conn.commit()
         col_defs = []
         for col, dtype in df.dtypes.items():
@@ -195,25 +194,26 @@ def fast_copy(df, table_name, pg_conn, if_exists="append"):
             else:
                 pg_type = "TEXT"
             col_defs.append(f'"{col}" {pg_type}')
-        cur.execute(f"CREATE TABLE {table_name} ({', '.join(col_defs)})")
+        cur.execute(f"CREATE TABLE {table_name} ({', '.join(col_defs)})")  # nosec B608
         pg_conn.commit()
 
     buf = io.StringIO()
     df.to_csv(buf, index=False, header=False, na_rep="\\N")
     buf.seek(0)
     cols = ", ".join(f'"{c}"' for c in df.columns)
-    cur.copy_expert(f"COPY {table_name} ({cols}) FROM STDIN WITH CSV NULL '\\N'", buf)
+    cur.copy_expert(  # nosec B608
+        f"COPY {table_name} ({cols}) FROM STDIN WITH CSV NULL '\\N'", buf
+    )
     pg_conn.commit()
     cur.close()
 
 
 def read_transform_load(**context):
+    import io
     import sys
     import time
 
     sys.path.insert(0, "/opt/airflow/dags")
-    import io
-
     import pyarrow.parquet as pq
     from config import get_pg_conn, get_s3_client
 
@@ -297,10 +297,10 @@ def read_transform_load(**context):
                 pg_conn,
                 if_exists="replace" if i == 0 else "append",
             )
-
             total_rows += len(df_t)
             logger.info(
-                f"[{i+1}/{len(files)}] {key}: {len(df_t):,} rows (total: {total_rows:,}, dead: {dead_rows})"
+                f"[{i+1}/{len(files)}] {key}: {len(df_t):,} rows "
+                f"(total: {total_rows:,}, dead: {dead_rows})"
             )
             del df, df_t
 
@@ -385,7 +385,6 @@ def validate_staging(**context):
     )
 
     cur = pg_conn.cursor()
-
     cur.execute("SELECT COUNT(*) FROM transactions_silver_temp")
     total = cur.fetchone()[0]
     cur.execute(
@@ -404,7 +403,8 @@ def validate_staging(**context):
     cur.execute("SELECT COUNT(*) FROM transactions_silver_temp WHERE is_laundering = 1")
     laundering = cur.fetchone()[0]
     cur.execute(
-        "SELECT COUNT(*) FROM transactions_silver_temp WHERE is_laundering NOT IN (0, 1)"
+        "SELECT COUNT(*) FROM transactions_silver_temp "
+        "WHERE is_laundering NOT IN (0, 1)"
     )
     invalid_label = cur.fetchone()[0]
 
@@ -481,7 +481,6 @@ def validate_staging(**context):
         event_type="COMPLETE",
     )
     pg_conn.close()
-
     logger.info("Validation passed!")
     context["ti"].xcom_push(key="validated_rows", value=total)
     context["ti"].xcom_push(key="laundering_rate", value=rate)
@@ -524,10 +523,8 @@ def promote_to_silver(**context):
     logger.info("Renamed temp → transactions_silver")
 
     s3 = get_s3_client()
-
     cur.execute("SELECT DISTINCT source FROM transactions_silver")
     sources = [r[0] for r in cur.fetchall()]
-
     cur.execute("""
         SELECT DISTINCT
             EXTRACT(YEAR FROM timestamp)::int,
@@ -543,7 +540,6 @@ def promote_to_silver(**context):
         for source in sources:
             for year, month in partitions:
                 logger.info(f"Writing MinIO: {source}/year={year}/month={month:02d}")
-
                 batch_cur = pg_conn.cursor(f"cursor_{source}_{year}_{month}")
                 batch_cur.execute(
                     """
@@ -570,7 +566,6 @@ def promote_to_silver(**context):
                 writer = pq.ParquetWriter(buf, table.schema, compression="snappy")
                 writer.write_table(table)
                 partition_rows += len(df)
-                logger.info(f"  buffered {partition_rows:,} rows...")
                 del df, table
 
                 while True:
@@ -581,7 +576,6 @@ def promote_to_silver(**context):
                     table = pa.Table.from_pandas(df, preserve_index=False)
                     writer.write_table(table)
                     partition_rows += len(df)
-                    logger.info(f"  buffered {partition_rows:,} rows...")
                     del df, table
 
                 batch_cur.close()
@@ -594,7 +588,8 @@ def promote_to_silver(**context):
                 s3.put_object(Bucket="silver", Key=silver_key, Body=buf.getvalue())
                 total_written += partition_rows
                 logger.info(
-                    f"Written: silver/{silver_key} ({partition_rows:,} rows, {buf.tell()/1e6:.1f} MB)"
+                    f"Written: silver/{silver_key} "
+                    f"({partition_rows:,} rows, {buf.tell()/1e6:.1f} MB)"
                 )
 
         duration = time.time() - start_time
@@ -643,7 +638,6 @@ def promote_to_silver(**context):
 
     cur.close()
     pg_conn.close()
-
     total_rows = context["ti"].xcom_pull(
         task_ids="validate_staging", key="validated_rows"
     )
@@ -681,41 +675,43 @@ def create_indexes(**context):
     cur.execute("SET maintenance_work_mem = '256MB'")
     cur.execute("SET max_parallel_maintenance_workers = 1")
 
+    idx_base = "CREATE INDEX CONCURRENTLY IF NOT EXISTS"
+    tbl = "transactions_silver"
     indexes = [
         (
             "idx_silver_transaction_id",
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_silver_transaction_id ON transactions_silver(transaction_id)",
+            f"{idx_base} idx_silver_transaction_id ON {tbl}(transaction_id)",
         ),
         (
             "idx_silver_timestamp",
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_silver_timestamp ON transactions_silver(timestamp)",
+            f"{idx_base} idx_silver_timestamp ON {tbl}(timestamp)",
         ),
         (
             "idx_silver_is_laundering",
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_silver_is_laundering ON transactions_silver(is_laundering)",
+            f"{idx_base} idx_silver_is_laundering ON {tbl}(is_laundering)",
         ),
         (
             "idx_silver_sender",
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_silver_sender ON transactions_silver(sender_account_masked)",
+            f"{idx_base} idx_silver_sender ON {tbl}(sender_account_masked)",
         ),
         (
             "idx_silver_receiver",
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_silver_receiver ON transactions_silver(receiver_account_masked)",
+            f"{idx_base} idx_silver_receiver ON {tbl}(receiver_account_masked)",
         ),
         (
             "idx_silver_sender_ts",
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_silver_sender_ts ON transactions_silver(sender_account_masked, timestamp)",
+            f"{idx_base} idx_silver_sender_ts ON {tbl}(sender_account_masked, timestamp)",
         ),
         (
             "idx_silver_receiver_ts",
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_silver_receiver_ts ON transactions_silver(receiver_account_masked, timestamp)",
+            f"{idx_base} idx_silver_receiver_ts ON {tbl}(receiver_account_masked, timestamp)",
         ),
     ]
 
     try:
         for name, sql in indexes:
             logger.info(f"Creating index: {name}...")
-            cur.execute(sql)
+            cur.execute(sql)  # nosec B608
             logger.info(f"Created: {name}")
             time.sleep(10)
 
@@ -729,7 +725,6 @@ def create_indexes(**context):
             output_namespace="postgres",
             event_type="COMPLETE",
         )
-
         pg_conn.autocommit = False
         log_audit(
             pg_conn,
@@ -779,7 +774,6 @@ with DAG(
     catchup=False,
     tags=["aml", "silver", "production"],
 ) as dag:
-
     t1 = PythonOperator(
         task_id="read_transform_load",
         python_callable=read_transform_load,
@@ -800,5 +794,4 @@ with DAG(
         python_callable=create_indexes,
         execution_timeout=timedelta(minutes=30),
     )
-
     t1 >> t2 >> t3 >> t4

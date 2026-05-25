@@ -3,7 +3,7 @@ Shared test fixtures for AML Pipeline tests
 """
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
