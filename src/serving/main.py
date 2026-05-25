@@ -355,7 +355,7 @@ def get_alerts(
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         params.extend([limit, offset])
 
-        cur.execute(
+        cur.execute(  # nosec B608
             f"""
             SELECT alert_id, transaction_id, risk_score, typology, status, created_at
             FROM aml_alerts

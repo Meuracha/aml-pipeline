@@ -26,7 +26,7 @@ CURRENCY_MAP = {
 
 def make_transaction_id(row: pd.Series, source: str) -> str:
     key = f"{source}_{row['Timestamp']}_{row['Account_sender']}_{row['Account_receiver']}_{row['Amount Paid']}"
-    return hashlib.md5(key.encode()).hexdigest()
+    return hashlib.md5(key.encode(), usedforsecurity=False).hexdigest()
 
 
 def load_ibm_aml(filepath: str, chunksize: int = 100_000) -> pd.DataFrame:

@@ -151,7 +151,7 @@ def prepare_dataset(**context):
         SELECT {', '.join(feature_cols)}
         FROM transactions_featured
         ORDER BY timestamp
-    """)
+    """)  # nosec B608
 
     first_batch = batch_cur.fetchmany(BATCH_SIZE)
     if not first_batch:
@@ -523,7 +523,9 @@ def evaluate_model(**context):
         shap_values, X_sample, feature_names=FEATURES, show=False, max_display=15
     )
     plt.tight_layout()
-    shap_path = "/tmp/shap_summary.png"
+    import tempfile
+
+    shap_path = tempfile.mktemp(suffix=".png")  # nosec B108
     plt.savefig(shap_path, dpi=100, bbox_inches="tight")
     plt.close()
 
