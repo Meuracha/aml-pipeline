@@ -103,25 +103,21 @@ class TestHealth:
 class TestRiskLevel:
 
     def test_get_risk_level_critical(self):
-        from src.serving.main import get_risk_level
 
         assert get_risk_level(0.95) == "CRITICAL"
         assert get_risk_level(0.90) == "CRITICAL"
 
     def test_get_risk_level_high(self):
-        from src.serving.main import get_risk_level
 
         assert get_risk_level(0.85) == "HIGH"
         assert get_risk_level(0.70) == "HIGH"
 
     def test_get_risk_level_medium(self):
-        from src.serving.main import get_risk_level
 
         assert get_risk_level(0.65) == "MEDIUM"
         assert get_risk_level(0.40) == "MEDIUM"
 
     def test_get_risk_level_low(self):
-        from src.serving.main import get_risk_level
 
         assert get_risk_level(0.39) == "LOW"
         assert get_risk_level(0.0) == "LOW"
@@ -259,7 +255,6 @@ class TestAlertUpdate:
     def test_valid_statuses_accepted(self, client):
         """Test that valid status values are accepted by the endpoint"""
         valid_statuses = ["OPEN", "INVESTIGATING", "CLOSED"]
-        from src.serving.main import get_risk_level
 
         # Just verify the endpoint logic, not the DB operation
         for status in valid_statuses:

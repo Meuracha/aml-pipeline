@@ -5,7 +5,6 @@ ML Model Tests — AML Pipeline
 import argparse
 
 import numpy as np
-import pandas as pd
 import pytest
 
 xgb = pytest.importorskip("xgboost", reason="xgboost not installed")
@@ -169,10 +168,10 @@ def validate_production_model():
         print(f"Val AUC-ROC: {auc_roc:.4f} (min: {MIN_AUC_ROC})")
         print(f"Val Recall:  {recall:.4f} (min: {MIN_RECALL})")
         if auc_roc < MIN_AUC_ROC:
-            print(f"❌ BLOCK DEPLOY — AUC-ROC too low")
+            print("❌ BLOCK DEPLOY — AUC-ROC too low")
             return False
         if recall < MIN_RECALL:
-            print(f"❌ BLOCK DEPLOY — Recall too low")
+            print("❌ BLOCK DEPLOY — Recall too low")
             return False
         print("✅ Model validation passed")
         return True
