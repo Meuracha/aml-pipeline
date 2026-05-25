@@ -143,8 +143,8 @@ def prepare_dataset(**context):
     logger.info("Reading gold features from PostgreSQL...")
     BATCH_SIZE = 200_000
     batch_cur = pg_conn.cursor("ml_dataset_cursor")
-    batch_cur.execute(  # nosec B608
-        f"SELECT {', '.join(feature_cols)} FROM transactions_featured ORDER BY timestamp"
+    batch_cur.execute(
+        f"SELECT {', '.join(feature_cols)} FROM transactions_featured ORDER BY timestamp"  # nosec B608
     )
 
     first_batch = batch_cur.fetchmany(BATCH_SIZE)
@@ -594,8 +594,8 @@ def register_model(**context):
 
     while True:
         cur = pg_conn.cursor()
-        sql = (  # nosec B608
-            f"SELECT transaction_id, {', '.join(FEATURES)} "
+        sql = (
+            f"SELECT transaction_id, {', '.join(FEATURES)} "  # nosec B608
             f"FROM transactions_featured "
             f"ORDER BY timestamp "
             f"LIMIT {BATCH_SIZE} OFFSET {offset}"
