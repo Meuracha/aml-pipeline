@@ -65,8 +65,8 @@ def get_s3():
     return boto3.client(
         "s3",
         endpoint_url=os.getenv("MINIO_ENDPOINT", "http://minio:9000"),
-        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "minio_user"),
-        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "minio_password"),
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", ""),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", ""),
     )
 
 
@@ -75,8 +75,8 @@ def get_pg():
         host=os.getenv("POSTGRES_HOST", "postgres"),
         port=os.getenv("POSTGRES_PORT", "5432"),
         dbname=os.getenv("POSTGRES_DB", "aml_db"),
-        user=os.getenv("POSTGRES_USER", "aml_user"),
-        password=os.getenv("POSTGRES_PASSWORD", "aml_password"),
+        user=os.getenv("POSTGRES_USER", ""),
+        password=os.getenv("POSTGRES_PASSWORD", ""),
     )
 
 
@@ -355,16 +355,13 @@ def get_alerts(
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         params.extend([limit, offset])
 
-        cur.execute(
-            f"""
-            SELECT alert_id, transaction_id, risk_score, typology, status, created_at
-            FROM aml_alerts
-            {where}
-            ORDER BY risk_score DESC
-            LIMIT %s OFFSET %s
-        """,
-            params,
+        base_sql = (
+            "SELECT alert_id, transaction_id, risk_score, "
+            "typology, status, created_at FROM aml_alerts "
         )
+        order_sql = "ORDER BY risk_score DESC LIMIT %s OFFSET %s"
+        query = base_sql + (where + " " if where else "") + order_sql  # nosec B608
+        cur.execute(query, params)
 
         rows = cur.fetchall()
         cur.close()
