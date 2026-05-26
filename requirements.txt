@@ -20,6 +20,7 @@ mlflow==2.10.0
 transformers==4.37.0
 torch==2.1.0
 shap==0.44.0
+xgboost==2.0.0
 
 # Serving
 fastapi==0.109.0
