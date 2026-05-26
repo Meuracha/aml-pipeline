@@ -7,7 +7,7 @@ apache-airflow-providers-amazon
 pandas==2.1.0
 pyarrow==14.0.0
 psycopg2-binary==2.9.9
-sqlalchemy==2.0.0
+sqlalchemy>=1.4.28,<2.0
 
 # Data Lake
 minio==7.2.3
