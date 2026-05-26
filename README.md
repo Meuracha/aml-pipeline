@@ -1,10 +1,10 @@
 # AML Transaction Monitoring Pipeline
 ### IBM Consulting Portfolio — End-to-End MLOps
 
-[![CI](https://github.com/YOUR_USERNAME/aml-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/aml-pipeline/actions/workflows/ci.yml)
-[![CD](https://github.com/YOUR_USERNAME/aml-pipeline/actions/workflows/cd.yml/badge.svg)](https://github.com/YOUR_USERNAME/aml-pipeline/actions/workflows/cd.yml)
+[![CI](https://github.com/meuracha/aml-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/meuracha/aml-pipeline/actions/workflows/ci.yml)
+[![CD](https://github.com/meuracha/aml-pipeline/actions/workflows/cd.yml/badge.svg)](https://github.com/meuracha/aml-pipeline/actions/workflows/cd.yml)
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
-[![Airflow](https://img.shields.io/badge/Airflow-2.10.5-green)](https://airflow.apache.org)
+[![Airflow](https://img.shields.io/badge/Airflow-2.8.0-green)](https://airflow.apache.org)
 [![XGBoost](https://img.shields.io/badge/XGBoost-AUC--ROC%200.9362-orange)](https://xgboost.readthedocs.io)
 
 ---
@@ -24,6 +24,8 @@ IBM AML Dataset (6.9M transactions)
 ---
 
 ## Architecture
+
+![Architecture Overview](docs/diagrams/aml_pipeline_architecture.svg)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -72,19 +74,62 @@ IBM AML Dataset (6.9M transactions)
 
 ---
 
+## Screenshots
+
+### Streamlit Executive Summary Dashboard
+![Streamlit Executive Summary](docs/diagrams/executive_summary.png)
+![Streamlit Executive Summary](docs/diagrams/executive_summary_1.png)
+![Streamlit Executive Summary](docs/diagrams/executive_summary_2.png)
+
+### Streamlit Alert Management Dashboard
+![Alert Management](docs/diagrams/Alert_management.png)
+
+### Streamlit Risk Analytics Dashboard
+![Risk Analytics](docs/diagrams/risk_analytics.png)
+![Risk Analytics](docs/diagrams/risk_analytics_1.png)
+![Risk Analytics](docs/diagrams/risk_analytics_2.png)
+
+### Streamlit Model Performance Dashboard
+![Model Performance](docs/diagrams/model_performance.png)
+![Model Performance](docs/diagrams/model_performance_1.png)
+![Model Performance](docs/diagrams/model_performance_2.png)
+
+### Streamlit Transaction Search
+![Transaction Search](docs/diagrams/transaction_search.png)
+
+### Airflow DAG View
+![Airflow Dags](docs/diagrams/airflow_dags.png)
+
+### MLflow Experiment Tracking
+![MLflow Run](docs/diagrams/mlflow_run.png)
+
+### MLflow Model Registry  
+![MLflow Registry](docs/diagrams/mlflow_registry.png)
+
+### FastAPI Swagger UI
+![Fast Api](docs/diagrams/fast_api.png)
+
+### Marquez Data Lineage
+> _Add screenshot: `docs/screenshots/marquez_lineage.png`_
+
+### MinIO Storage
+> _Add screenshot: `docs/screenshots/minio_buckets.png`_
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Orchestration | Apache Airflow 2.10.5 |
+| Orchestration | Apache Airflow 2.8.0 |
 | Data Lake | MinIO (S3-compatible) |
 | Database | PostgreSQL 15 |
-| Feature Engineering | DuckDB 1.5.2 + psycopg2 |
+| Feature Engineering | DuckDB + psycopg2 |
 | ML Model | XGBoost (binary:logistic) |
-| ML Tracking | MLflow 3.12.0 |
+| ML Tracking | MLflow 2.10.0 |
 | Model Explainability | SHAP |
 | API Serving | FastAPI 0.109 + Uvicorn |
-| Dashboard | Streamlit 1.31 + Plotly |
+| Dashboard | Streamlit + Plotly |
 | Reverse Proxy | Nginx |
 | Monitoring | Prometheus + Grafana + Loki |
 | Data Lineage | Marquez (OpenLineage) |
@@ -142,7 +187,7 @@ IBM AML Dataset (6.9M transactions)
 ### 1. Clone & Configure
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/aml-pipeline.git
+git clone https://github.com/meuracha/aml-pipeline.git
 cd aml-pipeline
 cp .env.example .env   # แก้ credentials ถ้าต้องการ
 ```
@@ -293,7 +338,7 @@ POST /predict                         → real-time ML scoring
 3. Unit tests (pytest + coverage)
 4. DAG validation (import + structure)
 5. Docker build test (all images)
-6. Model validation gate (AUC-ROC ≥ 0.85)
+6. Model validation gate (AUC-ROC ≥ 0.85) — trigger with [retrain] in commit message
 ```
 
 ### CD (merge to main)
