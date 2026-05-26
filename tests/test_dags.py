@@ -19,6 +19,7 @@ class TestDAGImports:
     def test_bronze_dag_importable(self):
         try:
             import aml_bronze_dag
+
             assert hasattr(aml_bronze_dag, "dag")
         except Exception as e:
             pytest.fail(f"Cannot import aml_bronze_dag: {e}")
@@ -26,6 +27,7 @@ class TestDAGImports:
     def test_silver_dag_importable(self):
         try:
             import aml_silver_dag
+
             assert hasattr(aml_silver_dag, "dag")
         except Exception as e:
             pytest.fail(f"Cannot import aml_silver_dag: {e}")
@@ -33,6 +35,7 @@ class TestDAGImports:
     def test_gold_dag_importable(self):
         try:
             import aml_gold_dag
+
             assert hasattr(aml_gold_dag, "dag")
         except Exception as e:
             pytest.fail(f"Cannot import aml_gold_dag: {e}")
@@ -40,6 +43,7 @@ class TestDAGImports:
     def test_ml_dag_importable(self):
         try:
             import aml_ml_dag
+
             assert hasattr(aml_ml_dag, "dag")
         except Exception as e:
             pytest.fail(f"Cannot import aml_ml_dag: {e}")
@@ -88,7 +92,9 @@ class TestDAGStructure:
     # ── bronze task ids ─────────────────────────────────────────────────────
     def test_bronze_task_ids(self):
         task_ids = {t.task_id for t in self.bronze_dag.tasks}
-        assert {"upload_to_bronze", "validate_bronze", "route_dead_letter"}.issubset(task_ids)
+        assert {"upload_to_bronze", "validate_bronze", "route_dead_letter"}.issubset(
+            task_ids
+        )
 
     def test_bronze_task_order(self):
         task_ids = [t.task_id for t in self.bronze_dag.topological_sort()]
@@ -98,18 +104,30 @@ class TestDAGStructure:
     # ── silver task ids ─────────────────────────────────────────────────────
     def test_silver_task_ids(self):
         task_ids = {t.task_id for t in self.silver_dag.tasks}
-        assert {"read_transform_load", "validate_staging", "promote_to_silver", "create_indexes"}.issubset(task_ids)
+        assert {
+            "read_transform_load",
+            "validate_staging",
+            "promote_to_silver",
+            "create_indexes",
+        }.issubset(task_ids)
 
     def test_silver_task_order(self):
         task_ids = [t.task_id for t in self.silver_dag.topological_sort()]
-        assert task_ids.index("read_transform_load") < task_ids.index("validate_staging")
+        assert task_ids.index("read_transform_load") < task_ids.index(
+            "validate_staging"
+        )
         assert task_ids.index("validate_staging") < task_ids.index("promote_to_silver")
         assert task_ids.index("promote_to_silver") < task_ids.index("create_indexes")
 
     # ── gold task ids ───────────────────────────────────────────────────────
     def test_gold_task_ids(self):
         task_ids = {t.task_id for t in self.gold_dag.tasks}
-        assert {"feature_engineering", "validate_gold", "promote_to_gold", "generate_alerts"}.issubset(task_ids)
+        assert {
+            "feature_engineering",
+            "validate_gold",
+            "promote_to_gold",
+            "generate_alerts",
+        }.issubset(task_ids)
 
     def test_gold_task_order(self):
         task_ids = [t.task_id for t in self.gold_dag.topological_sort()]
@@ -120,7 +138,12 @@ class TestDAGStructure:
     # ── ml task ids ─────────────────────────────────────────────────────────
     def test_ml_dag_has_all_tasks(self):
         task_ids = {t.task_id for t in self.ml_dag.tasks}
-        assert {"prepare_dataset", "train_model", "evaluate_model", "register_model"}.issubset(task_ids)
+        assert {
+            "prepare_dataset",
+            "train_model",
+            "evaluate_model",
+            "register_model",
+        }.issubset(task_ids)
 
     def test_ml_dag_task_order(self):
         task_ids = [t.task_id for t in self.ml_dag.topological_sort()]
