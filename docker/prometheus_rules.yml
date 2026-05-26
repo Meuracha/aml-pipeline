@@ -1,0 +1,56 @@
+groups:
+  - name: aml_pipeline
+    rules:
+      - alert: FastAPIDown
+        expr: up{job="fastapi"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FastAPI serving layer is down"
+          description: "FastAPI has been down for more than 1 minute"
+
+      - alert: PostgresDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL exporter has been unreachable for more than 1 minute"
+
+      - alert: MinIODown
+        expr: up{job="minio"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO storage is down"
+          description: "MinIO has been down for more than 1 minute"
+
+      - alert: LokiDown
+        expr: up{job="loki"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loki log aggregation is down"
+          description: "Loki has been down for more than 1 minute"
+
+      - alert: HighFastAPILatency
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job="fastapi"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FastAPI p99 latency > 1s"
+          description: "FastAPI 99th percentile latency has exceeded 1 second for 5 minutes"
+
+      - alert: HighFastAPIErrorRate
+        expr: rate(http_requests_total{job="fastapi", status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FastAPI error rate > 5%"
+          description: "FastAPI is returning 5xx errors at more than 5% rate"
