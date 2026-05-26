@@ -121,6 +121,7 @@ jobs:
 
       - name: Run unit tests
         env:
+          PYTHONPATH: ${{ github.workspace }}
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
           POSTGRES_USER: ${{ env.POSTGRES_USER }}
