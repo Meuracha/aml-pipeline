@@ -95,13 +95,13 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ─────────────────────────────────────────
-  # Job 2: Deploy (optional — requires secrets)
+  # Job 2: Deploy (requires DEPLOY_ENABLED=true in vars)
   # ─────────────────────────────────────────
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
     needs: [build-push]
-    if: ${{ secrets.DEPLOY_HOST != '' }}
+    if: vars.DEPLOY_ENABLED == 'true'
     environment: ${{ github.event.inputs.environment || 'production' }}
 
     steps:
