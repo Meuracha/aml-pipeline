@@ -8,16 +8,21 @@ scrape_configs:
       - targets: ['fastapi:8000']
     metrics_path: '/metrics'
 
-  - job_name: 'airflow'
-    static_configs:
-      - targets: ['airflow:8080']
-    metrics_path: '/metrics'
-
-  - job_name: 'postgres'
-    static_configs:
-      - targets: ['postgres:5432']
-
   - job_name: 'minio'
     static_configs:
       - targets: ['minio:9000']
     metrics_path: '/minio/v2/metrics/cluster'
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+    metrics_path: '/metrics'
+
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    metrics_path: '/metrics'
