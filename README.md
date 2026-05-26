@@ -27,58 +27,12 @@ IBM AML Dataset (6.9M transactions)
 
 ![Architecture Overview](docs/diagrams/aml_pipeline_architecture.svg)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     DATA SOURCES                            │
-│              IBM AML Dataset (Kaggle)                       │
-│              6,924,041 transactions · Sep 2022              │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  DATA CONTRACT LAYER                        │
-│         validate schema ก่อน ingest ทุกครั้ง               │
-│              ❌ Invalid → Dead Letter Queue                  │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 ORCHESTRATION (Airflow)                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────┐  │
-│  │  BRONZE  │→ │  SILVER  │→ │   GOLD   │→ │    ML     │  │
-│  │ ingest   │  │ clean +  │  │ feature  │  │ XGBoost   │  │
-│  │ parquet  │  │ standard │  │ engineer │  │ AUC 0.936 │  │
-│  └──────────┘  └──────────┘  └──────────┘  └───────────┘  │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   DATA LAKE (MinIO)                         │
-│  bronze/   silver/   gold/   gold/ml/scores.parquet         │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  SERVING LAYER                              │
-│  FastAPI (/health /alerts /analytics /predict)              │
-│  → loads 6.9M scores into memory at startup (O(1) lookup)  │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 COMPLIANCE DASHBOARD (Streamlit)            │
-│  Executive Summary · Alert Management · Risk Analytics      │
-│  Model Performance · Transaction Search · Threshold Sim     │
-└─────────────────────────────────────────────────────────────┘
-```
-
 ---
 
 ## Screenshots
 
 ### Streamlit Executive Summary Dashboard
 ![Streamlit Executive Summary](docs/diagrams/executive_summary.png)
-![Streamlit Executive Summary](docs/diagrams/executive_summary_1.png)
 ![Streamlit Executive Summary](docs/diagrams/executive_summary_2.png)
 
 ### Streamlit Alert Management Dashboard
@@ -103,17 +57,22 @@ IBM AML Dataset (6.9M transactions)
 ### MLflow Experiment Tracking
 ![MLflow Run](docs/diagrams/mlflow_run.png)
 
-### MLflow Model Registry  
+### MLflow Model Registry
 ![MLflow Registry](docs/diagrams/mlflow_registry.png)
 
 ### FastAPI Swagger UI
 ![Fast Api](docs/diagrams/fast_api.png)
 
 ### Marquez Data Lineage
-> _Add screenshot: `docs/screenshots/marquez_lineage.png`_
+![Marquez](docs/diagrams/merquez.png)
+![Marquez](docs/diagrams/merquez_1.png)
 
 ### MinIO Storage
-> _Add screenshot: `docs/screenshots/minio_buckets.png`_
+![Minio](docs/diagrams/minio.png)
+
+### Prometheus Monitoring
+![Prometheus Target](docs/diagrams/prometheus_target.png)
+![Prometheus Rule Health](docs/diagrams/prometheus_rulehealth.png)
 
 ---
 
