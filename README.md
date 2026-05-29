@@ -231,10 +231,17 @@ aml-pipeline/
 │   ├── Dockerfile.streamlit
 │   ├── init.sql                # PostgreSQL schema
 │   └── nginx.conf
+├── k8s/
+│   ├── fastapi-deployment.yaml
+│   ├── fastapi-service.yaml
+│   ├── streamlit-deployment.yaml
+│   ├── streamlit-service.yaml
+│   ├── ingress.yaml
+│   ├── secrets.example.yaml
+│   └── README-k8s.md
 ├── docs/
 │   └── diagrams/
 │       ├── aml_data_flow.svg           # data flow diagram (all layers)
-│       ├── aml_pipeline_architecture.svg
 │       └── *.png                       # screenshots
 ├── data/
 │   └── raw/                    # LI-Small_Trans.csv (not committed)
@@ -314,6 +321,13 @@ POST /predict                         → real-time ML scoring
 3. Smoke test (curl all health endpoints)
 4. Auto-create GitHub Release with changelog
 ```
+
+---
+
+## Kubernetes
+
+Serving layer (FastAPI + Streamlit) is designed for Kubernetes deployment.
+See [`k8s/README-k8s.md`](k8s/README-k8s.md) for manifests and deployment guide.
 
 ---
 
