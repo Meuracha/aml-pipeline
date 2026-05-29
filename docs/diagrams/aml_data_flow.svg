@@ -1,0 +1,175 @@
+<svg width="100%" viewBox="0 0 680 900" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>AML Pipeline Data Flow Diagram</title>
+  <desc>End-to-end data flow showing Bronze, Silver, Gold, ML layers with MinIO and PostgreSQL storage nodes</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      text { font-family: sans-serif; fill: #222; }
+      .th { font-size: 14px; font-weight: 500; }
+      .ts { font-size: 12px; fill: #555; }
+      .arr { stroke: #888; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+      .c-gray rect  { fill: #F1EFE8; stroke: #888780; }
+      .c-amber rect { fill: #FAEEDA; stroke: #BA7517; }
+      .c-teal rect  { fill: #E1F5EE; stroke: #0F6E56; }
+      .c-coral rect { fill: #FAECE7; stroke: #993C1D; }
+      .c-purple rect{ fill: #EEEDFE; stroke: #534AB7; }
+      .c-blue rect  { fill: #E6F1FB; stroke: #185FA5; }
+      .c-green rect { fill: #EAF3DE; stroke: #3B6D11; }
+      .c-amber .th  { fill: #633806; }
+      .c-amber .ts  { fill: #854F0B; }
+      .c-teal .th   { fill: #085041; }
+      .c-teal .ts   { fill: #0F6E56; }
+      .c-coral .th  { fill: #712B13; }
+      .c-coral .ts  { fill: #993C1D; }
+      .c-purple .th { fill: #3C3489; }
+      .c-purple .ts { fill: #534AB7; }
+      .c-blue .th   { fill: #0C447C; }
+      .c-blue .ts   { fill: #185FA5; }
+      .c-green .th  { fill: #27500A; }
+      .c-green .ts  { fill: #3B6D11; }
+      .c-gray .th   { fill: #444441; }
+      .c-gray .ts   { fill: #5F5E5A; }
+    </style>
+  </defs>
+
+  <!-- Source -->
+  <g class="c-gray">
+    <rect x="215" y="20" width="250" height="50" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="40" text-anchor="middle" dominant-baseline="central">IBM AML Dataset</text>
+    <text class="ts" x="340" y="57" text-anchor="middle" dominant-baseline="central">6.9M transactions (CSV)</text>
+  </g>
+
+  <line x1="340" y1="70" x2="340" y2="108" class="arr"/>
+  <text class="ts" x="352" y="92" dominant-baseline="central">Airflow DAG</text>
+
+  <!-- Bronze -->
+  <g class="c-amber">
+    <rect x="100" y="108" width="340" height="58" rx="8" stroke-width="0.5"/>
+    <text class="th" x="270" y="128" text-anchor="middle" dominant-baseline="central">Bronze — raw ingestion</text>
+    <text class="ts" x="270" y="148" text-anchor="middle" dominant-baseline="central">CSV → Parquet (14 files) · 8 rows dead letter</text>
+  </g>
+
+  <!-- MinIO -->
+  <g class="c-amber">
+    <rect x="468" y="96" width="172" height="70" rx="8" stroke-width="0.5" stroke-dasharray="4 2"/>
+    <text class="th" x="554" y="116" text-anchor="middle" dominant-baseline="central">MinIO</text>
+    <text class="ts" x="554" y="134" text-anchor="middle" dominant-baseline="central">Large files (Parquet)</text>
+    <text class="ts" x="554" y="150" text-anchor="middle" dominant-baseline="central">Full-file load, O(1) lookup</text>
+  </g>
+  <line x1="440" y1="137" x2="466" y2="131" class="arr"/>
+
+  <line x1="270" y1="166" x2="270" y2="204" class="arr"/>
+  <text class="ts" x="282" y="188" dominant-baseline="central">Airflow DAG</text>
+
+  <!-- Silver -->
+  <g class="c-teal">
+    <rect x="100" y="204" width="340" height="58" rx="8" stroke-width="0.5"/>
+    <text class="th" x="270" y="224" text-anchor="middle" dominant-baseline="central">Silver — clean &amp; standardize</text>
+    <text class="ts" x="270" y="244" text-anchor="middle" dominant-baseline="central">6,924,041 rows · type casting · null handling</text>
+  </g>
+
+  <!-- PostgreSQL -->
+  <g class="c-teal">
+    <rect x="468" y="192" width="172" height="70" rx="8" stroke-width="0.5" stroke-dasharray="4 2"/>
+    <text class="th" x="554" y="212" text-anchor="middle" dominant-baseline="central">PostgreSQL</text>
+    <text class="ts" x="554" y="230" text-anchor="middle" dominant-baseline="central">Structured queries</text>
+    <text class="ts" x="554" y="246" text-anchor="middle" dominant-baseline="central">Filter, join, aggregate</text>
+  </g>
+  <line x1="440" y1="233" x2="466" y2="227" class="arr"/>
+
+  <line x1="270" y1="262" x2="270" y2="300" class="arr"/>
+  <text class="ts" x="282" y="284" dominant-baseline="central">Airflow DAG</text>
+
+  <!-- Gold -->
+  <g class="c-coral">
+    <rect x="100" y="300" width="340" height="70" rx="8" stroke-width="0.5"/>
+    <text class="th" x="270" y="320" text-anchor="middle" dominant-baseline="central">Gold — feature engineering &amp; alerts</text>
+    <text class="ts" x="270" y="341" text-anchor="middle" dominant-baseline="central">15 features · rule-based scoring</text>
+    <text class="ts" x="270" y="358" text-anchor="middle" dominant-baseline="central">103,899 alerts → aml_alerts</text>
+  </g>
+  <path d="M440 345 L554 345 L554 264" fill="none" stroke="#993C1D" stroke-width="1" stroke-dasharray="4 2" marker-end="url(#arrow)"/>
+
+  <line x1="270" y1="370" x2="270" y2="408" class="arr"/>
+  <text class="ts" x="282" y="392" dominant-baseline="central">Airflow DAG</text>
+
+  <!-- ML -->
+  <g class="c-purple">
+    <rect x="100" y="408" width="340" height="70" rx="8" stroke-width="0.5"/>
+    <text class="th" x="270" y="428" text-anchor="middle" dominant-baseline="central">ML — XGBoost risk scoring</text>
+    <text class="ts" x="270" y="449" text-anchor="middle" dominant-baseline="central">AUC-ROC 0.9362 · threshold 0.90 · SHAP</text>
+    <text class="ts" x="270" y="466" text-anchor="middle" dominant-baseline="central">173k CRITICAL · 541k HIGH</text>
+  </g>
+
+  <!-- ML → MinIO scores.parquet -->
+  <path d="M440 430 L554 430 L554 168" fill="none" stroke="#534AB7" stroke-width="1" stroke-dasharray="4 2" marker-end="url(#arrow)"/>
+  <text class="ts" x="612" y="300" text-anchor="middle" dominant-baseline="central">scores</text>
+  <text class="ts" x="612" y="314" text-anchor="middle" dominant-baseline="central">.parquet</text>
+  <text class="ts" x="612" y="328" text-anchor="middle" dominant-baseline="central">297 MB</text>
+
+  <!-- MLflow -->
+  <g class="c-purple">
+    <rect x="468" y="396" width="172" height="70" rx="8" stroke-width="0.5" stroke-dasharray="4 2"/>
+    <text class="th" x="554" y="416" text-anchor="middle" dominant-baseline="central">MLflow</text>
+    <text class="ts" x="554" y="434" text-anchor="middle" dominant-baseline="central">Experiment tracking</text>
+    <text class="ts" x="554" y="450" text-anchor="middle" dominant-baseline="central">Model Registry</text>
+  </g>
+  <line x1="440" y1="450" x2="466" y2="450" class="arr"/>
+
+  <line x1="200" y1="478" x2="160" y2="530" class="arr"/>
+  <line x1="340" y1="478" x2="380" y2="530" class="arr"/>
+
+  <!-- FastAPI -->
+  <g class="c-blue">
+    <rect x="40" y="530" width="240" height="70" rx="8" stroke-width="0.5"/>
+    <text class="th" x="160" y="550" text-anchor="middle" dominant-baseline="central">FastAPI serving</text>
+    <text class="ts" x="160" y="571" text-anchor="middle" dominant-baseline="central">/predict · /alerts · /analytics</text>
+    <text class="ts" x="160" y="588" text-anchor="middle" dominant-baseline="central">loads MinIO · queries PostgreSQL</text>
+  </g>
+
+  <!-- Streamlit -->
+  <g class="c-green">
+    <rect x="320" y="530" width="240" height="70" rx="8" stroke-width="0.5"/>
+    <text class="th" x="440" y="550" text-anchor="middle" dominant-baseline="central">Streamlit dashboard</text>
+    <text class="ts" x="440" y="571" text-anchor="middle" dominant-baseline="central">Executive summary · Alert mgmt</text>
+    <text class="ts" x="440" y="588" text-anchor="middle" dominant-baseline="central">Risk analytics · Model performance</text>
+  </g>
+
+  <!-- FastAPI read lines -->
+  <path d="M160 530 L160 510 L554 510 L554 464" fill="none" stroke="#aaa" stroke-width="0.5" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+  <path d="M260 530 L260 490 L554 490 L554 168" fill="none" stroke="#aaa" stroke-width="0.5" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+
+  <line x1="160" y1="600" x2="160" y2="648" class="arr"/>
+  <line x1="440" y1="600" x2="440" y2="648" class="arr"/>
+
+  <!-- Monitoring -->
+  <g class="c-gray">
+    <rect x="40" y="648" width="240" height="56" rx="8" stroke-width="0.5"/>
+    <text class="th" x="160" y="668" text-anchor="middle" dominant-baseline="central">Monitoring</text>
+    <text class="ts" x="160" y="688" text-anchor="middle" dominant-baseline="central">Grafana · Prometheus · Loki</text>
+  </g>
+
+  <!-- Lineage -->
+  <g class="c-gray">
+    <rect x="320" y="648" width="240" height="56" rx="8" stroke-width="0.5"/>
+    <text class="th" x="440" y="668" text-anchor="middle" dominant-baseline="central">Data lineage</text>
+    <text class="ts" x="440" y="688" text-anchor="middle" dominant-baseline="central">Marquez (OpenLineage)</text>
+  </g>
+
+  <!-- CI/CD bracket -->
+  <rect x="20" y="108" width="16" height="322" rx="4" fill="none" stroke="#bbb" stroke-width="0.5" stroke-dasharray="4 3"/>
+  <text class="ts" x="12" y="269" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 12 269)">GitHub Actions CI/CD</text>
+
+  <!-- Legend -->
+  <rect x="60" y="732" width="560" height="44" rx="8" fill="none" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="80" y1="754" x2="112" y2="754" stroke="#888" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text class="ts" x="120" y="754" dominant-baseline="central">data flow</text>
+  <line x1="210" y1="754" x2="242" y2="754" stroke="#888" stroke-width="1" stroke-dasharray="4 2" fill="none" marker-end="url(#arrow)"/>
+  <text class="ts" x="250" y="754" dominant-baseline="central">write to storage</text>
+  <line x1="370" y1="754" x2="402" y2="754" stroke="#aaa" stroke-width="0.5" stroke-dasharray="3 3" fill="none" marker-end="url(#arrow)"/>
+  <text class="ts" x="410" y="754" dominant-baseline="central">read / query</text>
+  <rect x="510" y="744" width="90" height="20" rx="4" fill="none" stroke="#aaa" stroke-width="0.5" stroke-dasharray="4 2"/>
+  <text class="ts" x="555" y="754" text-anchor="middle" dominant-baseline="central">storage node</text>
+  <text class="ts" x="340" y="770" text-anchor="middle" dominant-baseline="central">Data Flow — AML Transaction Monitoring Pipeline</text>
+</svg>

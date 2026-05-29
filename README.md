@@ -13,19 +13,21 @@
 
 End-to-end **Anti-Money Laundering (AML)** transaction monitoring system built on the IBM AML Dataset (6.9M transactions). Demonstrates production-grade MLOps: medallion data architecture, XGBoost risk scoring, FastAPI serving, and Streamlit compliance dashboard.
 
-```
-IBM AML Dataset (6.9M transactions)
-         ↓
-  Bronze → Silver → Gold → ML → FastAPI → Streamlit
-         ↓
-  103,899 alerts | AUC-ROC 0.9362 | 173k CRITICAL transactions
-```
+| Metric | Value |
+|--------|-------|
+| Dataset | 6.9M transactions (IBM AML) |
+| Alerts generated | 103,899 |
+| Model AUC-ROC | 0.9362 |
+| CRITICAL risk transactions | 173,330 (2.5%) |
+| API endpoints | 12 |
 
 ---
 
-## Architecture
+## Data Flow
 
-![Architecture Overview](docs/diagrams/aml_pipeline_architecture.svg)
+![Data Flow Diagram](docs/diagrams/aml_data_flow.svg)
+
+> **Storage design:** MinIO stores large Parquet files (scores.parquet 297 MB) for full-file O(1) lookup. PostgreSQL stores structured queryable data (transactions, alerts) for filter/join/aggregate operations.
 
 ---
 
@@ -229,6 +231,11 @@ aml-pipeline/
 │   ├── Dockerfile.streamlit
 │   ├── init.sql                # PostgreSQL schema
 │   └── nginx.conf
+├── docs/
+│   └── diagrams/
+│       ├── aml_data_flow.svg           # data flow diagram (all layers)
+│       ├── aml_pipeline_architecture.svg
+│       └── *.png                       # screenshots
 ├── data/
 │   └── raw/                    # LI-Small_Trans.csv (not committed)
 ├── docker-compose.yml
