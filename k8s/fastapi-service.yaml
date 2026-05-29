@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aml-fastapi-service
+  labels:
+    app: aml-fastapi
+spec:
+  selector:
+    app: aml-fastapi
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aml-streamlit
+  labels:
+    app: aml-streamlit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aml-streamlit
+  template:
+    metadata:
+      labels:
+        app: aml-streamlit
+    spec:
+      containers:
+        - name: streamlit
+          image: ghcr.io/meuracha/aml-pipeline/streamlit:latest
+          ports:
+            - containerPort: 8501
+          env:
+            - name: FASTAPI_URL
+              value: "http://aml-fastapi-service:80"
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: aml-secrets
+                  key: postgres-host
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: aml-secrets
+                  key: postgres-db
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: aml-secrets
+                  key: postgres-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aml-secrets
+                  key: postgres-password
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"
+          readinessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 15
+            periodSeconds: 10
