@@ -21,6 +21,7 @@ logs/
 .env
 *.env
 docker/grafana/provisioning/datasources/datasources.yml
+k8s/secrets.yaml
 
 # Coverage
 coverage.xml
