@@ -4,6 +4,7 @@ x-airflow-common: &airflow-common
     dockerfile: docker/Dockerfile.airflow
   env_file: .env
   environment:
+    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-arm64
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'

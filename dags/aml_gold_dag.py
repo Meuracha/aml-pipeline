@@ -4,6 +4,10 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
+import sys
+sys.path.insert(0, "/opt/airflow/src")
+from spark_features import run_spark_feature_engineering  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 default_args = {
@@ -803,12 +807,29 @@ def generate_alerts(**context):
 with DAG(
     dag_id="aml_gold_transform",
     default_args=default_args,
-    description="AML Gold — DuckDB feature engineering → validate → promote → alerts",
+    description="AML Gold — Spark features → DuckDB feature engineering → validate → promote → alerts",
     schedule_interval="@once",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["aml", "gold", "production"],
 ) as dag:
+    t0 = PythonOperator(
+        task_id="spark_feature_engineering",
+        python_callable=run_spark_feature_engineering,
+        op_kwargs={"run_date": "{{ ds }}"},
+        execution_timeout=timedelta(minutes=30),
+        doc_md="""
+        ### Spark Feature Engineering
+        อ่าน `transactions_silver` จาก PostgreSQL ผ่าน JDBC (15% sample, ~1M rows)
+        คำนวณ features เพิ่มเติม:
+        - `rolling_7d_tx_count` / `rolling_30d_tx_count` (Window per sender)
+        - `amount_zscore` per payment_type
+        - `time_bucket` (morning/afternoon/evening/night)
+        เขียน Parquet ลง MinIO: `s3://gold/spark_features/run_date={ds}/`
+
+        > Production: ตั้ง SPARK_SAMPLE_FRACTION=1.0 บน EMR/Dataproc
+        """,
+    )
     t1 = PythonOperator(
         task_id="feature_engineering",
         python_callable=feature_engineering,
@@ -829,4 +850,4 @@ with DAG(
         python_callable=generate_alerts,
         execution_timeout=timedelta(minutes=10),
     )
-    t1 >> t2 >> t3 >> t4
+    t0 >> t1 >> t2 >> t3 >> t4

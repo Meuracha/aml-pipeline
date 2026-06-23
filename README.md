@@ -6,6 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
 [![Airflow](https://img.shields.io/badge/Airflow-2.8.0-green)](https://airflow.apache.org)
 [![XGBoost](https://img.shields.io/badge/XGBoost-AUC--ROC%200.9362-orange)](https://xgboost.readthedocs.io)
+[![Spark](https://img.shields.io/badge/PySpark-3.5.1-red)](https://spark.apache.org)
 
 ---
 
@@ -85,7 +86,7 @@ End-to-end **Anti-Money Laundering (AML)** transaction monitoring system built o
 | Orchestration | Apache Airflow 2.8.0 |
 | Data Lake | MinIO (S3-compatible) |
 | Database | PostgreSQL 15 |
-| Feature Engineering | DuckDB + psycopg2 |
+| Feature Engineering | PySpark 3.5.1 + DuckDB + psycopg2 |
 | ML Model | XGBoost (binary:logistic) |
 | ML Tracking | MLflow 2.10.0 |
 | Model Explainability | SHAP |
@@ -96,6 +97,12 @@ End-to-end **Anti-Money Laundering (AML)** transaction monitoring system built o
 | Data Lineage | Marquez (OpenLineage) |
 | CI/CD | GitHub Actions |
 | Containerization | Docker + Docker Compose |
+
+> **Spark Note:** `spark_feature_engineering` (Gold DAG t0) reads `transactions_silver`
+> via JDBC and computes rolling 7d/30d tx counts, amount z-score per payment type,
+> and time-of-day buckets using PySpark Window functions. Runs on 15% sample (~1M rows)
+> in local Docker due to RAM constraint. Set `SPARK_SAMPLE_FRACTION=1.0` for full
+> 6.9M rows on AWS EMR / GCP Dataproc (change `.master("local[*]")` → `.master("yarn")`).
 
 ---
 
@@ -128,6 +135,7 @@ End-to-end **Anti-Money Laundering (AML)** transaction monitoring system built o
 | Bronze | Files | 14 parquet files |
 | Bronze | Dead Letter | 8 invalid rows |
 | Silver | Rows | 6,924,041 |
+| Gold | Spark Features | rolling_7d/30d_tx_count, amount_zscore, time_bucket |
 | Gold | Alerts | 103,899 |
 | Gold | cross_currency_high_risk | 96,715 (93.1%) |
 | Gold | structuring_rapid | 5,276 (5.1%) |
@@ -179,7 +187,7 @@ make minio-setup
 
 ```bash
 make dag-run
-# Bronze → Silver → Gold → ML
+# Bronze → Silver → Gold (Spark → DuckDB → validate → promote → alerts) → ML
 ```
 
 หรือ trigger ทีละ DAG ผ่าน Airflow UI: http://localhost:8080
@@ -210,10 +218,11 @@ aml-pipeline/
 ├── dags/
 │   ├── aml_bronze_dag.py       # CSV → MinIO parquet
 │   ├── aml_silver_dag.py       # clean + standardize → PostgreSQL
-│   ├── aml_gold_dag.py         # feature engineering + alerts
+│   ├── aml_gold_dag.py         # Spark features → DuckDB → validate → promote → alerts
 │   ├── aml_ml_dag.py           # XGBoost train + evaluate + score
 │   └── config.py               # shared connections
 ├── src/
+│   ├── spark_features.py       # PySpark feature engineering (Gold t0)
 │   ├── serving/
 │   │   └── main.py             # FastAPI endpoints
 │   └── dashboard/
@@ -225,7 +234,7 @@ aml-pipeline/
 │   ├── test_dags.py            # DAG imports + structure
 │   └── test_ml.py              # model validation gate
 ├── docker/
-│   ├── Dockerfile.airflow
+│   ├── Dockerfile.airflow      # includes Java 17 + PySpark 3.5.1
 │   ├── Dockerfile.api
 │   ├── Dockerfile.mlflow
 │   ├── Dockerfile.streamlit
@@ -333,6 +342,9 @@ See [`k8s/README-k8s.md`](k8s/README-k8s.md) for manifests and deployment guide.
 
 ## Architecture Decisions
 
+**Why PySpark for feature engineering instead of DuckDB only?**
+DuckDB excels at single-node in-process analytics but does not scale horizontally. PySpark's Window functions (`rangeBetween` on unix timestamps) enable the same rolling aggregations with a path to distributed execution on EMR/Dataproc by changing a single `.master()` config — no code rewrite required. The two engines complement each other: Spark handles long-window features (7d/30d), DuckDB handles short-window features (1h) that require tight PostgreSQL integration.
+
 **Why MinIO for scores instead of PostgreSQL UPDATE?**
 Updating 6.9M rows in PostgreSQL takes 3-6 hours. Saving scores as parquet to MinIO takes ~15 minutes. FastAPI loads the 297MB file into memory at startup for O(1) lookup.
 
@@ -346,5 +358,3 @@ Compliance officers have limited capacity to review alerts. High threshold reduc
 XGBoost is interpretable via SHAP, trains fast on tabular data, and handles class imbalance well with `scale_pos_weight`. Deep learning would require more data and longer training time with marginal benefit for this dataset.
 
 ---
-
-*Built with ❤️ for IBM Consulting Data & AI Practice*

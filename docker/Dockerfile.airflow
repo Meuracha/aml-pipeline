@@ -1,9 +1,41 @@
 FROM apache/airflow:2.10.5-python3.11
 
 USER root
-RUN apt-get update && apt-get install -y gcc g++ && apt-get clean
+
+# Java (required by PySpark) + curl สำหรับ download JARs
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        openjdk-17-jdk-headless \
+        curl \
+        gcc \
+        g++ \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# Download JARs ที่ PySpark ต้องการสำหรับ PostgreSQL JDBC + MinIO S3A
+# วางไว้ใน /opt/spark/jars เพื่อให้ทุก SparkSession โหลดอัตโนมัติ
+RUN mkdir -p /opt/spark/jars
+
+# PostgreSQL JDBC driver
+RUN curl -fsSL \
+    https://jdbc.postgresql.org/download/postgresql-42.7.3.jar \
+    -o /opt/spark/jars/postgresql-42.7.3.jar
+
+# Hadoop AWS (S3A) + AWS SDK — ต้องตรงกับ Hadoop version ที่ PySpark 3.5 ใช้
+RUN curl -fsSL \
+    https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar \
+    -o /opt/spark/jars/hadoop-aws-3.3.4.jar \
+    && curl -fsSL \
+    https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar \
+    -o /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar
+
+RUN chmod 644 /opt/spark/jars/*.jar
 
 USER airflow
+
 RUN pip install --no-cache-dir \
     duckdb \
     xgboost \
@@ -11,4 +43,12 @@ RUN pip install --no-cache-dir \
     shap \
     pyarrow \
     boto3 \
-    mlflow
+    mlflow \
+    pyspark==3.5.1
+
+# บอก PySpark ให้โหลด JARs จาก /opt/spark/jars อัตโนมัติ
+ENV PYSPARK_PYTHON=python3
+ENV SPARK_HOME=/home/airflow/.local/lib/python3.11/site-packages/pyspark
+ENV PYTHONPATH="${SPARK_HOME}/python:${SPARK_HOME}/python/lib/py4j-0.10.9.7-src.zip:${PYTHONPATH}"
+# Extra JARs สำหรับ S3A + PostgreSQL
+ENV SPARK_EXTRA_CLASSPATH="/opt/spark/jars/*"
