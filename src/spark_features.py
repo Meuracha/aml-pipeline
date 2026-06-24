@@ -50,11 +50,13 @@ def _build_spark():
     # MinIO endpoint: ถ้าขึ้นต้นด้วย http:// ให้ตัดออก (S3A ใช้ host:port เท่านั้น)
     minio_host_port = MINIO_ENDPOINT.replace("http://", "").replace("https://", "")
 
-    jars = ",".join([
-        "/opt/spark/jars/postgresql-42.7.3.jar",
-        "/opt/spark/jars/hadoop-aws-3.3.4.jar",
-        "/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
-    ])
+    jars = ",".join(
+        [
+            "/opt/spark/jars/postgresql-42.7.3.jar",
+            "/opt/spark/jars/hadoop-aws-3.3.4.jar",
+            "/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
+        ]
+    )
 
     return (
         SparkSession.builder.appName("AML-SparkFeatureEngineering")
