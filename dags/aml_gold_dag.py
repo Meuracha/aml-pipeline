@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from datetime import datetime, timedelta
 
@@ -6,6 +7,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 
 sys.path.insert(0, "/opt/airflow/src")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from spark_features import run_spark_feature_engineering  # noqa: E402
 
 logger = logging.getLogger(__name__)
